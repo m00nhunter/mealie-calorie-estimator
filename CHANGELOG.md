@@ -1,3 +1,9 @@
+## [1.12.2](https://github.com/timo-reymann/mealie-calorie-estimator/compare/v1.12.1...v1.12.2) (2026-10-03)
+
+### Bug Fixes
+
+* replace history SSE with incremental polling ([#28](https://github.com/timo-reymann/mealie-calorie-estimator/issues/28)) ([7b116cf](https://github.com/timo-reymann/mealie-calorie-estimator/commit/7b116cfe527174e874c50f741f21845b0b12b47a))
+
 ## [1.12.1](https://github.com/timo-reymann/mealie-calorie-estimator/compare/v1.12.0...v1.12.1) (2026-10-03)
 
 ### Bug Fixes

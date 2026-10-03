@@ -1,3 +1,9 @@
+## [1.12.0](https://github.com/timo-reymann/mealie-calorie-estimator/compare/v1.11.2...v1.12.0) (2026-10-03)
+
+### Features
+
+* add in-memory estimator execution history page ([#26](https://github.com/timo-reymann/mealie-calorie-estimator/issues/26)) ([067e588](https://github.com/timo-reymann/mealie-calorie-estimator/commit/067e588cda10d101e33c141b2ab9973d406ae033))
+
 ## [1.11.2](https://github.com/timo-reymann/mealie-calorie-estimator/compare/v1.11.1...v1.11.2) (2026-10-03)
 
 ### Bug Fixes

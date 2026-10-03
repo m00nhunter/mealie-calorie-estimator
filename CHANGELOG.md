@@ -1,3 +1,9 @@
+## [1.10.0](https://github.com/timo-reymann/mealie-calorie-estimator/compare/v1.9.0...v1.10.0) (2026-10-03)
+
+### Features
+
+* make LLM temperature and max tokens configurable for GPT-5 support ([#21](https://github.com/timo-reymann/mealie-calorie-estimator/issues/21)) ([98caa32](https://github.com/timo-reymann/mealie-calorie-estimator/commit/98caa32cbab710da49627dac4c9c3dcca1369c48))
+
 ## [1.9.0](https://github.com/timo-reymann/mealie-calorie-estimator/compare/v1.8.0...v1.9.0) (2026-07-26)
 
 ### Features

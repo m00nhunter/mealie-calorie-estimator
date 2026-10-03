@@ -1,3 +1,9 @@
+## [1.12.1](https://github.com/timo-reymann/mealie-calorie-estimator/compare/v1.12.0...v1.12.1) (2026-10-03)
+
+### Bug Fixes
+
+* keep SSE connections alive through proxies ([#27](https://github.com/timo-reymann/mealie-calorie-estimator/issues/27)) ([e47c383](https://github.com/timo-reymann/mealie-calorie-estimator/commit/e47c3838c5f065c59907ba6b7eb617ac447edef9))
+
 ## [1.12.0](https://github.com/timo-reymann/mealie-calorie-estimator/compare/v1.11.2...v1.12.0) (2026-10-03)
 
 ### Features

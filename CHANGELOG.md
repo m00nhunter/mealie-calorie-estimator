@@ -1,3 +1,9 @@
+## [1.11.0](https://github.com/timo-reymann/mealie-calorie-estimator/compare/v1.10.0...v1.11.0) (2026-10-03)
+
+### Features
+
+* use recipeServings with recipeYieldQuantity fallback for servings ([#22](https://github.com/timo-reymann/mealie-calorie-estimator/issues/22)) ([77e9284](https://github.com/timo-reymann/mealie-calorie-estimator/commit/77e92845f056d2e43dc3c3b90069d7c881816825)), closes [#19](https://github.com/timo-reymann/mealie-calorie-estimator/issues/19)
+
 ## [1.10.0](https://github.com/timo-reymann/mealie-calorie-estimator/compare/v1.9.0...v1.10.0) (2026-10-03)
 
 ### Features

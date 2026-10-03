@@ -1,3 +1,9 @@
+## [1.11.2](https://github.com/timo-reymann/mealie-calorie-estimator/compare/v1.11.1...v1.11.2) (2026-10-03)
+
+### Bug Fixes
+
+* clear remaining Sonar findings (S8707, S7765, S7785) ([#25](https://github.com/timo-reymann/mealie-calorie-estimator/issues/25)) ([cf54f1c](https://github.com/timo-reymann/mealie-calorie-estimator/commit/cf54f1c07fba81fc94d1a89d3b8b605e6493b3a5)), closes [Array#include](https://github.com/timo-reymann/Array/issues/include)
+
 ## [1.11.1](https://github.com/timo-reymann/mealie-calorie-estimator/compare/v1.11.0...v1.11.1) (2026-10-03)
 
 ### Bug Fixes

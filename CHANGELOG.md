@@ -1,3 +1,9 @@
+## [1.11.1](https://github.com/timo-reymann/mealie-calorie-estimator/compare/v1.11.0...v1.11.1) (2026-10-03)
+
+### Bug Fixes
+
+* preserve manual nutrition and serialize recipe event processing ([#23](https://github.com/timo-reymann/mealie-calorie-estimator/issues/23)) ([9d632ad](https://github.com/timo-reymann/mealie-calorie-estimator/commit/9d632add095cd7a63210e11e666b3a681940f5b2)), closes [#16](https://github.com/timo-reymann/mealie-calorie-estimator/issues/16)
+
 ## [1.11.0](https://github.com/timo-reymann/mealie-calorie-estimator/compare/v1.10.0...v1.11.0) (2026-10-03)
 
 ### Features

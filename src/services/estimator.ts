@@ -16,7 +16,8 @@ export function computeIngredientHash(recipe: MealieRecipe): string {
     const qty = ing.quantity ?? 0
     const unitName = ing.unit?.name ?? ""
     const foodName = ing.food?.name ?? ""
-    parts.push(`${qty}|${unitName}|${foodName}`)
+    const referencedSlug = ing.referencedRecipe?.slug ?? ""
+    parts.push(`${qty}|${unitName}|${foodName}|${referencedSlug}`)
   }
 
   parts.sort()
@@ -68,6 +69,20 @@ function addToTotal(total: NutrientSet, nutrients: NutrientSet, grams: number): 
     sugarPer100g: add(total.sugarPer100g, nutrients.sugarPer100g),
     sodiumPer100g: add(total.sodiumPer100g, nutrients.sodiumPer100g),
     cholesterolPer100g: add(total.cholesterolPer100g, nutrients.cholesterolPer100g),
+  }
+}
+
+function scaleNutrients(nutrients: NutrientSet, factor: number): NutrientSet {
+  const scale = (v: number | null): number | null => v !== null ? v * factor : null
+  return {
+    kcalPer100g: scale(nutrients.kcalPer100g), proteinPer100g: scale(nutrients.proteinPer100g), carbsPer100g: scale(nutrients.carbsPer100g), fatPer100g: scale(nutrients.fatPer100g), saturatedFatPer100g: scale(nutrients.saturatedFatPer100g), transFatPer100g: scale(nutrients.transFatPer100g), unsaturatedFatPer100g: scale(nutrients.unsaturatedFatPer100g), fiberPer100g: scale(nutrients.fiberPer100g), sugarPer100g: scale(nutrients.sugarPer100g), sodiumPer100g: scale(nutrients.sodiumPer100g), cholesterolPer100g: scale(nutrients.cholesterolPer100g),
+  }
+}
+
+function addNutrients(total: NutrientSet, add: NutrientSet): NutrientSet {
+  const sum = (a: number | null, b: number | null): number | null => a === null && b === null ? null : (a ?? 0) + (b ?? 0)
+  return {
+    kcalPer100g: sum(total.kcalPer100g, add.kcalPer100g), proteinPer100g: sum(total.proteinPer100g, add.proteinPer100g), carbsPer100g: sum(total.carbsPer100g, add.carbsPer100g), fatPer100g: sum(total.fatPer100g, add.fatPer100g), saturatedFatPer100g: sum(total.saturatedFatPer100g, add.saturatedFatPer100g), transFatPer100g: sum(total.transFatPer100g, add.transFatPer100g), unsaturatedFatPer100g: sum(total.unsaturatedFatPer100g, add.unsaturatedFatPer100g), fiberPer100g: sum(total.fiberPer100g, add.fiberPer100g), sugarPer100g: sum(total.sugarPer100g, add.sugarPer100g), sodiumPer100g: sum(total.sodiumPer100g, add.sodiumPer100g), cholesterolPer100g: sum(total.cholesterolPer100g, add.cholesterolPer100g),
   }
 }
 
@@ -134,30 +149,49 @@ async function evaluateIngredient(ing: MealieIngredient): Promise<IngredientOutc
   return { foodName, grams, nutrients: result.nutrients, llmEstimated }
 }
 
-export async function estimateRecipe(recipe: MealieRecipe): Promise<EstimateResult> {
+interface EstimateContext { stack: Set<string> }
+
+async function evaluateReferencedRecipe(ing: MealieIngredient, context: EstimateContext): Promise<{ nutrients: NutrientSet; name: string } | null> {
+  const referenced = ing.referencedRecipe
+  const quantity = ing.quantity
+  if (!referenced?.slug || quantity == null || quantity <= 0 || context.stack.has(referenced.slug)) return null
+  const result = await estimateRecipe(referenced, { stack: new Set([...context.stack, referenced.slug]) })
+  if (result.servings == null || result.servings <= 0 || result.totalNutrients.kcalPer100g === null) return null
+  return { name: referenced.name || referenced.slug, nutrients: scaleNutrients(result.perServingNutrients, quantity) }
+}
+
+export async function estimateRecipe(recipe: MealieRecipe, context: EstimateContext = { stack: new Set([recipe.slug]) }): Promise<EstimateResult> {
   const matchedIngredients: IngredientMatch[] = []
   const unmatchedNames: string[] = []
   let totalNutrients = emptyNutrients()
 
-  const outcomes = await Promise.all(recipe.recipeIngredient.map((ing) => evaluateIngredient(ing)))
+  const outcomes = await Promise.all(recipe.recipeIngredient.map(async (ing) => {
+    if (ing.referencedRecipe) return { kind: "recipe" as const, ingredient: ing, result: await evaluateReferencedRecipe(ing, context) }
+    return { kind: "food" as const, result: await evaluateIngredient(ing) }
+  }))
 
   for (const outcome of outcomes) {
-    if (outcome === null) continue
-
-    if (outcome.grams === null || outcome.nutrients === null) {
-      unmatchedNames.push(outcome.foodName)
-      matchedIngredients.push({ name: outcome.foodName, grams: outcome.grams, matched: false, nutrients: null })
+    if (outcome.kind === "recipe") {
+      const name = outcome.result?.name ?? outcome.ingredient.referencedRecipe?.name ?? outcome.ingredient.referencedRecipe?.slug ?? "Referenced recipe"
+      if (outcome.result === null) {
+        unmatchedNames.push(name)
+        matchedIngredients.push({ name, grams: null, matched: false, nutrients: null })
+      } else {
+        totalNutrients = addNutrients(totalNutrients, outcome.result.nutrients)
+        matchedIngredients.push({ name, grams: null, matched: true, nutrients: outcome.result.nutrients })
+      }
       continue
     }
 
-    totalNutrients = addToTotal(totalNutrients, outcome.nutrients, outcome.grams)
-    matchedIngredients.push({
-      name: outcome.foodName,
-      grams: outcome.grams,
-      matched: true,
-      nutrients: outcome.nutrients,
-      llmEstimated: outcome.llmEstimated,
-    })
+    const ingredientOutcome = outcome.result
+    if (ingredientOutcome === null) continue
+    if (ingredientOutcome.grams === null || ingredientOutcome.nutrients === null) {
+      unmatchedNames.push(ingredientOutcome.foodName)
+      matchedIngredients.push({ name: ingredientOutcome.foodName, grams: ingredientOutcome.grams, matched: false, nutrients: null })
+      continue
+    }
+    totalNutrients = addToTotal(totalNutrients, ingredientOutcome.nutrients, ingredientOutcome.grams)
+    matchedIngredients.push({ name: ingredientOutcome.foodName, grams: ingredientOutcome.grams, matched: true, nutrients: ingredientOutcome.nutrients, llmEstimated: ingredientOutcome.llmEstimated })
   }
 
   const servings = recipe.recipeServings ?? recipe.recipeYieldQuantity ?? 1

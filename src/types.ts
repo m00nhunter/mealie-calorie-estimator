@@ -7,6 +7,7 @@ export interface MealieIngredient {
   title: string | null
   originalText: string | null
   referenceId?: string | null
+  referencedRecipe?: MealieRecipe | null
 }
 
 export interface MealieUnit {

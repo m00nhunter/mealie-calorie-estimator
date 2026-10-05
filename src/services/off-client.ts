@@ -127,9 +127,13 @@ async function searchProduct(query: string, preferFresh = false): Promise<OffPro
   const ranked = [...data.hits].sort(
     (a, b) => scoreProduct(b, searchQuery, preferFresh) - scoreProduct(a, searchQuery, preferFresh),
   )
+  const bestScore = scoreProduct(ranked[0], searchQuery, preferFresh)
+  const maxKcalScoreDelta = 20
   const selected =
     ranked.find(
-      (product) => product.nutriments?.["energy-kcal_100g"] != null,
+      (product) =>
+        product.nutriments?.["energy-kcal_100g"] != null &&
+        bestScore - scoreProduct(product, searchQuery, preferFresh) <= maxKcalScoreDelta,
     ) ?? null
 
   if (!selected) {
@@ -156,6 +160,7 @@ async function searchProduct(query: string, preferFresh = false): Promise<OffPro
       preferFresh,
       selected: selectedName,
       score: scoreProduct(selected, searchQuery, preferFresh),
+      scoreDelta: bestScore - scoreProduct(selected, searchQuery, preferFresh),
       candidates: ranked.slice(0, 5).map((product) => ({
         name: product.product_name ?? null,
         score: scoreProduct(product, searchQuery, preferFresh),

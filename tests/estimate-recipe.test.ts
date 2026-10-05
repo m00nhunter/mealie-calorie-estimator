@@ -61,6 +61,32 @@ function queryOf(input: RequestInfo | URL): string {
 }
 
 describe("estimateRecipe", () => {
+  it("includes referenced recipe nutrition using the referenced quantity as servings", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const query = queryOf(input)
+      if (query === "Milch") return hitsResponse({ "energy-kcal_100g": 200 }, "Milch")
+      if (query === "Unterrezept") return hitsResponse({ "energy-kcal_100g": 500 }, "Unterrezept")
+      return emptyHitsResponse()
+    })
+
+    const subrecipe: MealieRecipe = {
+      slug: "subrecipe", name: "Unterrezept", recipeYield: "5 servings", recipeYieldQuantity: null,
+      recipeServings: 5, recipeIngredient: [ingredient("Unterrezept", 100)], nutrition: null, tags: [], extras: {}, householdId: null,
+    }
+    const parent = makeRecipe([
+      ingredient("Milch", 100),
+      { quantity: 4, unit: null, food: null, note: null, display: "4 Unterrezept", title: null, original_text: null, referencedRecipe: subrecipe },
+    ])
+
+    const result = await estimateRecipe(parent)
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(result.matchedCount).toBe(2)
+    expect(result.unmatchedCount).toBe(0)
+    expect(result.totalNutrients.kcalPer100g).toBe(600)
+    expect(result.perServingNutrients.kcalPer100g).toBe(150)
+  })
+
   it("matches ingredients concurrently and aggregates nutrients in order", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const query = queryOf(input)

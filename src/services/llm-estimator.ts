@@ -116,7 +116,7 @@ export async function estimateNutrients(foodName: string): Promise<NutrientSet |
       return null
     }
 
-    const json = JSON.parse(content.replace(/\`\`\`json\\n?|\\n?\`\`\`/g, ""))
+    const json = JSON.parse(content.replace(/```json\n?|\n?```/g, ""))
 
     const nutrients: NutrientSet = {
       kcalPer100g: Number(json.kcal) || null,

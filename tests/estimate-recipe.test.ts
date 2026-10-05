@@ -64,7 +64,7 @@ describe("estimateRecipe", () => {
   it("includes referenced recipe nutrition using the referenced quantity as servings", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const query = queryOf(input)
-      if (query === "Milch") return hitsResponse({ "energy-kcal_100g": 200 }, "Milch")
+      if (query === "Testmilch-ReferencedRecipe") return hitsResponse({ "energy-kcal_100g": 200 }, "Testmilch-ReferencedRecipe")
       if (query === "Unterrezept") return hitsResponse({ "energy-kcal_100g": 500 }, "Unterrezept")
       return emptyHitsResponse()
     })
@@ -74,7 +74,7 @@ describe("estimateRecipe", () => {
       recipeServings: 5, recipeIngredient: [ingredient("Unterrezept", 100)], nutrition: null, tags: [], extras: {}, householdId: null,
     }
     const parent = makeRecipe([
-      ingredient("Milch", 100),
+      ingredient("Testmilch-ReferencedRecipe", 100),
       { quantity: 4, unit: null, food: null, note: null, display: "4 Unterrezept", title: null, original_text: null, referencedRecipe: subrecipe },
     ])
 

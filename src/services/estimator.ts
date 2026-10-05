@@ -103,10 +103,18 @@ function divideByServings(total: NutrientSet, servings: number): NutrientSet {
   }
 }
 
+function formatQuantity(quantity: number, unit: MealieIngredient["unit"]): string {
+  const quantityText = Number.isInteger(quantity) ? quantity.toString() : quantity.toString()
+  const unitName = unit?.name?.trim()
+  return unitName ? quantityText + " " + unitName : quantityText
+}
+
 interface IngredientOutcome {
   foodName: string
   grams: number | null
+  quantityLabel: string
   nutrients: NutrientSet | null
+  kcalContribution: number | null
   llmEstimated: boolean
 }
 
@@ -133,7 +141,7 @@ async function evaluateIngredient(ing: MealieIngredient): Promise<IngredientOutc
   }
 
   if (grams === null) {
-    return { foodName, grams: null, nutrients: null, llmEstimated: false }
+    return { foodName, grams: null, quantityLabel: formatQuantity(quantity, ing.unit), nutrients: null, kcalContribution: null, llmEstimated: false }
   }
 
   const result = await lookupNutrients(foodName, ing.unit?.name)
@@ -141,23 +149,23 @@ async function evaluateIngredient(ing: MealieIngredient): Promise<IngredientOutc
   if (!result.matched || result.nutrients === null) {
     const llmNutrients = await estimateNutrients(foodName)
     if (llmNutrients !== null) {
-      return { foodName, grams, nutrients: llmNutrients, llmEstimated: true }
+      return { foodName, grams, quantityLabel: formatQuantity(quantity, ing.unit), nutrients: llmNutrients, kcalContribution: llmNutrients.kcalPer100g !== null ? llmNutrients.kcalPer100g * grams / 100 : null, llmEstimated: true }
     }
-    return { foodName, grams, nutrients: null, llmEstimated: false }
+    return { foodName, grams, quantityLabel: formatQuantity(quantity, ing.unit), nutrients: null, kcalContribution: null, llmEstimated: false }
   }
 
-  return { foodName, grams, nutrients: result.nutrients, llmEstimated }
+  return { foodName, grams, quantityLabel: formatQuantity(quantity, ing.unit), nutrients: result.nutrients, kcalContribution: result.nutrients.kcalPer100g !== null ? result.nutrients.kcalPer100g * grams / 100 : null, llmEstimated }
 }
 
 interface EstimateContext { stack: Set<string> }
 
-async function evaluateReferencedRecipe(ing: MealieIngredient, context: EstimateContext): Promise<{ nutrients: NutrientSet; name: string } | null> {
+async function evaluateReferencedRecipe(ing: MealieIngredient, context: EstimateContext): Promise<{ nutrients: NutrientSet; name: string; quantityLabel: string } | null> {
   const referenced = ing.referencedRecipe
   const quantity = ing.quantity
   if (!referenced?.slug || quantity == null || quantity <= 0 || context.stack.has(referenced.slug)) return null
   const result = await estimateRecipe(referenced, { stack: new Set([...context.stack, referenced.slug]) })
   if (result.servings == null || result.servings <= 0 || result.totalNutrients.kcalPer100g === null) return null
-  return { name: referenced.name || referenced.slug, nutrients: scaleNutrients(result.perServingNutrients, quantity) }
+  return { name: referenced.name || referenced.slug, quantityLabel: formatQuantity(quantity, ing.unit), nutrients: scaleNutrients(result.perServingNutrients, quantity) }
 }
 
 export async function estimateRecipe(recipe: MealieRecipe, context: EstimateContext = { stack: new Set([recipe.slug]) }): Promise<EstimateResult> {
@@ -175,10 +183,10 @@ export async function estimateRecipe(recipe: MealieRecipe, context: EstimateCont
       const name = outcome.result?.name ?? outcome.ingredient.referencedRecipe?.name ?? outcome.ingredient.referencedRecipe?.slug ?? "Referenced recipe"
       if (outcome.result === null) {
         unmatchedNames.push(name)
-        matchedIngredients.push({ name, grams: null, matched: false, nutrients: null })
+        matchedIngredients.push({ name, grams: null, quantityLabel: outcome.ingredient.quantity != null ? formatQuantity(outcome.ingredient.quantity, outcome.ingredient.unit) : "", kcalContribution: null, matched: false, nutrients: null })
       } else {
         totalNutrients = addNutrients(totalNutrients, outcome.result.nutrients)
-        matchedIngredients.push({ name, grams: null, matched: true, nutrients: outcome.result.nutrients })
+        matchedIngredients.push({ name, grams: null, quantityLabel: outcome.result.quantityLabel, kcalContribution: outcome.result.nutrients.kcalPer100g, matched: true, nutrients: outcome.result.nutrients })
       }
       continue
     }
@@ -187,11 +195,11 @@ export async function estimateRecipe(recipe: MealieRecipe, context: EstimateCont
     if (ingredientOutcome === null) continue
     if (ingredientOutcome.grams === null || ingredientOutcome.nutrients === null) {
       unmatchedNames.push(ingredientOutcome.foodName)
-      matchedIngredients.push({ name: ingredientOutcome.foodName, grams: ingredientOutcome.grams, matched: false, nutrients: null })
+      matchedIngredients.push({ name: ingredientOutcome.foodName, grams: ingredientOutcome.grams, quantityLabel: ingredientOutcome.quantityLabel, kcalContribution: null, matched: false, nutrients: null })
       continue
     }
     totalNutrients = addToTotal(totalNutrients, ingredientOutcome.nutrients, ingredientOutcome.grams)
-    matchedIngredients.push({ name: ingredientOutcome.foodName, grams: ingredientOutcome.grams, matched: true, nutrients: ingredientOutcome.nutrients, llmEstimated: ingredientOutcome.llmEstimated })
+    matchedIngredients.push({ name: ingredientOutcome.foodName, grams: ingredientOutcome.grams, quantityLabel: ingredientOutcome.quantityLabel, kcalContribution: ingredientOutcome.kcalContribution, matched: true, nutrients: ingredientOutcome.nutrients, llmEstimated: ingredientOutcome.llmEstimated })
   }
 
   const servings = recipe.recipeServings ?? recipe.recipeYieldQuantity ?? 1
@@ -244,6 +252,37 @@ export function buildManualAckPatch(recipe: MealieRecipe, hash: string): Nutriti
 
 function n(v: number | null): string {
   return v != null ? v.toString() : ""
+}
+
+export const NUTRITION_DETAILS_NOTE_TITLE = "Nutrition calculation details"
+
+function formatKcal(value: number | null): string {
+  if (value === null || !Number.isFinite(value)) return "—"
+  return Math.round(value).toLocaleString("de-CH").replace(/’/g, "'")
+}
+
+export function buildNutritionCalculationNote(recipe: MealieRecipe, result: EstimateResult): RecipeNote {
+  const rows = result.matchedIngredients.map((ingredient) => ({
+    name: ingredient.name,
+    quantity: ingredient.quantityLabel ?? "",
+    kcal: formatKcal(ingredient.kcalContribution ?? null),
+  }))
+  const nameWidth = Math.max("Zutat".length, ...rows.map((r) => r.name.length))
+  const quantityWidth = Math.max("Menge".length, ...rows.map((r) => r.quantity.length))
+  const kcalWidth = Math.max("kcal".length, ...rows.map((r) => r.kcal.length), formatKcal(result.totalNutrients.kcalPer100g).length)
+  const separator = "-".repeat(nameWidth + quantityWidth + kcalWidth + 6)
+  const line = (name: string, quantity: string, kcal: string) => name.padEnd(nameWidth) + "  " + quantity.padEnd(quantityWidth) + "  " + kcal.padStart(kcalWidth)
+  const lines = ["```", line("Zutat", "Menge", "kcal"), separator, ...rows.map((row) => line(row.name, row.quantity, row.kcal)), separator, line("Gesamt", "", formatKcal(result.totalNutrients.kcalPer100g))]
+  if (result.servings != null && result.servings > 0) lines.push(line("Pro Portion", "(" + result.servings + ")", formatKcal(result.perServingNutrients.kcalPer100g)))
+  if (result.unmatchedIngredients.length > 0) lines.push("", "Nicht berechnet: " + result.unmatchedIngredients.join(", "))
+  lines.push("```")
+  return { title: NUTRITION_DETAILS_NOTE_TITLE, text: lines.join("\\n") }
+}
+
+export function mergeNutritionCalculationNote(recipe: MealieRecipe, result: EstimateResult): RecipeNote[] {
+  const note = buildNutritionCalculationNote(recipe, result)
+  const existing = recipe.notes ?? []
+  return [...existing.filter((item) => item.title !== NUTRITION_DETAILS_NOTE_TITLE), note]
 }
 
 export function buildNutritionPatch(

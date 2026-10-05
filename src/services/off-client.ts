@@ -10,69 +10,82 @@ export interface OffLookupResult {
   productName: string | null
 }
 
-const OFF_NUTRIENT_FIELDS = ["product_name", "nutriments"].join(",")
+const OFF_NUTRIENT_FIELDS = ["product_name", "nutriments", "categories", "labels", "ingredients_text"].join(",")
 
 const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504])
 
-async function fetchWithRetry(url: string, query: string): Promise<Response | null> {
-  const { maxRetries, retryBackoffMs, userAgent } = config.openFoodFacts
-  let lastResponse: Response | null = null
+const FORM_PENALTY_TERMS = [
+  "getrocknet",
+  "getrocknete",
+  "dried",
+  "seche",
+  "séché",
+  "pulver",
+  "powder",
+  "granulat",
+  "extract",
+  "extrakt",
+  "konzentrat",
+  "konzentrierte",
+  "sirup",
+  "syrup",
+]
 
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    if (attempt > 0) {
-      const delay = retryBackoffMs * 2 ** (attempt - 1)
-      logger.debug({ query, attempt, delay }, "Retrying OFF search after backoff")
-      await new Promise((resolve) => setTimeout(resolve, delay))
-    }
+const FRESH_TERMS = ["frisch", "fresh", "frais", "fresca", "raw", "roh"]
 
-    try {
-      const res = await fetch(url, { headers: { "User-Agent": userAgent } })
-      if (res.ok || !RETRYABLE_STATUS.has(res.status)) {
-        return res
-      }
-      lastResponse = res
-      logger.debug({ query, attempt, status: res.status }, "OFF search returned retryable status")
-    } catch (err) {
-      lastResponse = null
-      logger.debug({ query, attempt, err: (err as Error).message }, "OFF search request failed")
-    }
-  }
-
-  return lastResponse
+function normalize(value: string): string {
+  return value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/ß/g, "ss")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
 }
 
-function extractNutrients(n: OffNutriments): NutrientSet {
-  const fat = n["fat_100g"] ?? null
-  const saturated = n["saturated-fat_100g"] ?? null
-  const trans = n["trans-fat_100g"] ?? null
+function searchTokens(value: string): string[] {
+  return normalize(value)
+    .split(/\s+/)
+    .filter((token) => token.length >= 3)
+}
 
-  let unsaturated: number | null = null
-  if (fat !== null) {
-    const s = saturated ?? 0
-    const t = trans ?? 0
-    unsaturated = Math.round((fat - s - t) * 10) / 10
+function candidateText(product: OffProduct): string {
+  return [
+    product.product_name,
+    product.categories,
+    product.labels,
+    product.ingredients_text,
+  ]
+    .filter(Boolean)
+    .join(" ")
+}
+
+function scoreProduct(product: OffProduct, query: string): number {
+  const name = normalize(product.product_name)
+  const text = normalize(candidateText(product))
+  const queryNormalized = normalize(query)
+  const queryTokens = searchTokens(query)
+  let score = 0
+
+  if (name === queryNormalized) score += 100
+  if (name.includes(queryNormalized) || queryNormalized.includes(name)) score += 50
+
+  for (const token of queryTokens) {
+    if (name.split(" ").includes(token)) score += 20
+    else if (text.includes(token)) score += 8
   }
 
-  return {
-    kcalPer100g: n["energy-kcal_100g"] ?? null,
-    proteinPer100g: n["proteins_100g"] ?? null,
-    carbsPer100g: n["carbohydrates_100g"] ?? null,
-    fatPer100g: fat,
-    saturatedFatPer100g: saturated,
-    transFatPer100g: trans,
-    unsaturatedFatPer100g: unsaturated,
-    fiberPer100g: n["fiber_100g"] ?? null,
-    sugarPer100g: n["sugars_100g"] ?? null,
-    sodiumPer100g: n["sodium_100g"] ?? null,
-    cholesterolPer100g: n["cholesterol_100g"] ?? null,
-  }
+  if (FRESH_TERMS.some((term) => text.includes(term))) score += 10
+  if (FORM_PENALTY_TERMS.some((term) => text.includes(term))) score -= 40
+
+  return score
 }
 
 async function searchProduct(query: string): Promise<OffProduct | null> {
   const params = new URLSearchParams({
     q: query,
     langs: config.openFoodFacts.language,
-    page_size: "1",
+    page_size: "10",
     fields: OFF_NUTRIENT_FIELDS,
   })
 
@@ -104,7 +117,26 @@ async function searchProduct(query: string): Promise<OffProduct | null> {
     return null
   }
 
-  return data.hits[0]
+  const ranked = [...data.hits].sort(
+    (a, b) => scoreProduct(b, query) - scoreProduct(a, query),
+  )
+  const selected = ranked[0]
+
+  logger.debug(
+    {
+      query,
+      selected: selected.product_name,
+      score: scoreProduct(selected, query),
+      candidates: ranked.slice(0, 5).map((product) => ({
+        name: product.product_name,
+        score: scoreProduct(product, query),
+        kcalPer100g: product.nutriments?.["energy-kcal_100g"] ?? null,
+      })),
+    },
+    "Selected OFF match from ranked candidates",
+  )
+
+  return selected
 }
 
 export async function lookupNutrients(foodName: string, unitName?: string): Promise<OffLookupResult> {
@@ -141,4 +173,31 @@ export async function lookupNutrients(foodName: string, unitName?: string): Prom
   logger.debug({ foodName, product: product.product_name }, "OFF match found")
   setCachedNutrients(foodName, nutrients)
   return { nutrients, matched: true, productName: product.product_name }
+}
+
+function extractNutrients(n: OffNutriments): NutrientSet {
+  const fat = n["fat_100g"] ?? null
+  const saturated = n["saturated-fat_100g"] ?? null
+  const trans = n["trans-fat_100g"] ?? null
+
+  let unsaturated: number | null = null
+  if (fat !== null) {
+    const s = saturated ?? 0
+    const t = trans ?? 0
+    unsaturated = Math.round((fat - s - t) * 10) / 10
+  }
+
+  return {
+    kcalPer100g: n["energy-kcal_100g"] ?? null,
+    proteinPer100g: n["proteins_100g"] ?? null,
+    carbsPer100g: n["carbohydrates_100g"] ?? null,
+    fatPer100g: fat,
+    saturatedFatPer100g: saturated,
+    transFatPer100g: trans,
+    unsaturatedFatPer100g: unsaturated,
+    fiberPer100g: n["fiber_100g"] ?? null,
+    sugarPer100g: n["sugars_100g"] ?? null,
+    sodiumPer100g: n["sodium_100g"] ?? null,
+    cholesterolPer100g: n["cholesterol_100g"] ?? null,
+  }
 }

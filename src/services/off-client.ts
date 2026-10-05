@@ -15,23 +15,37 @@ const OFF_NUTRIENT_FIELDS = ["product_name", "nutriments", "categories", "labels
 const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504])
 
 const FORM_PENALTY_TERMS = [
-  "getrocknet",
-  "getrocknete",
-  "dried",
-  "seche",
-  "séché",
-  "pulver",
-  "powder",
-  "granulat",
-  "extract",
-  "extrakt",
-  "konzentrat",
-  "konzentrierte",
-  "sirup",
-  "syrup",
+  "getrocknet", "getrocknete", "dried", "seche", "séché",
+  "pulver", "powder", "granulat", "extract", "extrakt",
+  "konzentrat", "konzentrierte", "sirup", "syrup",
 ]
 
 const FRESH_TERMS = ["frisch", "fresh", "frais", "fresca", "raw", "roh"]
+
+async function fetchWithRetry(url: string, query: string): Promise<Response | null> {
+  const { maxRetries, retryBackoffMs, userAgent } = config.openFoodFacts
+  let lastResponse: Response | null = null
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    if (attempt > 0) {
+      const delay = retryBackoffMs * 2 ** (attempt - 1)
+      logger.debug({ query, attempt, delay }, "Retrying OFF search after backoff")
+      await new Promise((resolve) => setTimeout(resolve, delay))
+    }
+
+    try {
+      const res = await fetch(url, { headers: { "User-Agent": userAgent } })
+      if (res.ok || !RETRYABLE_STATUS.has(res.status)) return res
+      lastResponse = res
+      logger.debug({ query, attempt, status: res.status }, "OFF search returned retryable status")
+    } catch (err) {
+      lastResponse = null
+      logger.debug({ query, attempt, err: (err as Error).message }, "OFF search request failed")
+    }
+  }
+
+  return lastResponse
+}
 
 function normalize(value: string): string {
   return value
@@ -44,23 +58,16 @@ function normalize(value: string): string {
 }
 
 function searchTokens(value: string): string[] {
-  return normalize(value)
-    .split(/\s+/)
-    .filter((token) => token.length >= 3)
+  return normalize(value).split(/\s+/).filter((token) => token.length >= 3)
 }
 
 function candidateText(product: OffProduct): string {
-  return [
-    product.product_name,
-    product.categories,
-    product.labels,
-    product.ingredients_text,
-  ]
+  return [product.product_name, product.categories, product.labels, product.ingredients_text]
     .filter(Boolean)
     .join(" ")
 }
 
-function scoreProduct(product: OffProduct, query: string): number {
+function scoreProduct(product: OffProduct, query: string, preferFresh: boolean): number {
   const name = normalize(product.product_name)
   const text = normalize(candidateText(product))
   const queryNormalized = normalize(query)
@@ -75,13 +82,13 @@ function scoreProduct(product: OffProduct, query: string): number {
     else if (text.includes(token)) score += 8
   }
 
-  if (FRESH_TERMS.some((term) => text.includes(term))) score += 10
-  if (FORM_PENALTY_TERMS.some((term) => text.includes(term))) score -= 40
+  if (FRESH_TERMS.some((term) => text.includes(term))) score += preferFresh ? 35 : 10
+  if (FORM_PENALTY_TERMS.some((term) => text.includes(term))) score -= preferFresh ? 80 : 40
 
   return score
 }
 
-async function searchProduct(query: string): Promise<OffProduct | null> {
+async function searchProduct(query: string, preferFresh = false): Promise<OffProduct | null> {
   const params = new URLSearchParams({
     q: query,
     langs: config.openFoodFacts.language,
@@ -92,14 +99,12 @@ async function searchProduct(query: string): Promise<OffProduct | null> {
   const url = `${config.openFoodFacts.searchBaseUrl}/search?${params}`
 
   await waitForRateLimit(RateLimitType.Search)
-
   const res = await fetchWithRetry(url, query)
 
   if (!res) {
     logger.warn({ query }, "OFF search failed after retries")
     return null
   }
-
   if (!res.ok) {
     logger.warn({ status: res.status, query }, "OFF search returned error")
     return null
@@ -113,23 +118,22 @@ async function searchProduct(query: string): Promise<OffProduct | null> {
     return null
   }
 
-  if (!data.hits || data.hits.length === 0) {
-    return null
-  }
+  if (!data.hits?.length) return null
 
   const ranked = [...data.hits].sort(
-    (a, b) => scoreProduct(b, query) - scoreProduct(a, query),
+    (a, b) => scoreProduct(b, query, preferFresh) - scoreProduct(a, query, preferFresh),
   )
   const selected = ranked[0]
 
   logger.debug(
     {
       query,
+      preferFresh,
       selected: selected.product_name,
-      score: scoreProduct(selected, query),
+      score: scoreProduct(selected, query, preferFresh),
       candidates: ranked.slice(0, 5).map((product) => ({
         name: product.product_name,
-        score: scoreProduct(product, query),
+        score: scoreProduct(product, query, preferFresh),
         kcalPer100g: product.nutriments?.["energy-kcal_100g"] ?? null,
       })),
     },
@@ -151,20 +155,22 @@ export async function lookupNutrients(foodName: string, unitName?: string): Prom
     searchTerm = searchTerm.slice(unitName.length).trim()
   }
 
-  const product = await searchProduct(searchTerm)
+  const normalizedUnit = unitName?.trim().toLowerCase()
+  const preferFresh = normalizedUnit === "stück" || normalizedUnit === "stuck" ||
+    normalizedUnit === "piece" || normalizedUnit === "pieces"
+
+  const product = await searchProduct(searchTerm, preferFresh)
 
   if (!product) {
     logger.debug({ foodName }, "No OFF match found")
     return { nutrients: null, matched: false, productName: null }
   }
-
   if (!product.nutriments) {
     logger.debug({ foodName, product: product.product_name }, "OFF match has no nutrient data")
     return { nutrients: null, matched: false, productName: product.product_name }
   }
 
   const nutrients = extractNutrients(product.nutriments)
-
   if (nutrients.kcalPer100g === null) {
     logger.debug({ foodName, product: product.product_name }, "OFF match has no kcal data")
     return { nutrients: null, matched: false, productName: product.product_name }

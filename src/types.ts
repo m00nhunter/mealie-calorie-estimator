@@ -61,7 +61,7 @@ export interface MealieRecipe {
   recipeServings: number | null
   recipeIngredient: MealieIngredient[]
   nutrition: MealieNutrition | null
-  notes: RecipeNote[] | null
+  notes?: RecipeNote[] | null
   tags: MealieTag[] | null
   extras: Record<string, string> | null
   householdId?: string | null

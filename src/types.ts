@@ -85,6 +85,9 @@ export interface OffSearchResult {
 
 export interface OffProduct {
   product_name: string
+  categories?: string | null
+  labels?: string | null
+  ingredients_text?: string | null
   nutriments?: OffNutriments
   nutriscore_grade?: string
 }

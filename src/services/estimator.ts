@@ -261,7 +261,7 @@ function formatKcal(value: number | null): string {
   return Math.round(value).toLocaleString("de-CH").replace(/’/g, "'")
 }
 
-export function buildNutritionCalculationNote(recipe: MealieRecipe, result: EstimateResult): RecipeNote {
+export function buildNutritionCalculationNote(result: EstimateResult): RecipeNote {
   const rows = result.matchedIngredients.map((ingredient) => ({
     name: ingredient.name,
     quantity: ingredient.quantityLabel ?? "",
@@ -276,11 +276,11 @@ export function buildNutritionCalculationNote(recipe: MealieRecipe, result: Esti
   if (result.servings != null && result.servings > 0) lines.push(line("Pro Portion", "(" + result.servings + ")", formatKcal(result.perServingNutrients.kcalPer100g)))
   if (result.unmatchedIngredients.length > 0) lines.push("", "Nicht berechnet: " + result.unmatchedIngredients.join(", "))
   lines.push("```")
-  return { title: NUTRITION_DETAILS_NOTE_TITLE, text: lines.join("\\n") }
+  return { title: NUTRITION_DETAILS_NOTE_TITLE, text: lines.join("\n") }
 }
 
 export function mergeNutritionCalculationNote(recipe: MealieRecipe, result: EstimateResult): RecipeNote[] {
-  const note = buildNutritionCalculationNote(recipe, result)
+  const note = buildNutritionCalculationNote(result)
   const existing = recipe.notes ?? []
   return [...existing.filter((item) => item.title !== NUTRITION_DETAILS_NOTE_TITLE), note]
 }

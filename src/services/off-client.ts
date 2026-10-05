@@ -68,7 +68,7 @@ function candidateText(product: OffProduct): string {
 }
 
 function scoreProduct(product: OffProduct, query: string, preferFresh: boolean): number {
-  const name = normalize(product.product_name)
+  const name = normalize(product.product_name ?? "")
   const text = normalize(candidateText(product))
   const queryNormalized = normalize(query)
   const queryTokens = searchTokens(query)

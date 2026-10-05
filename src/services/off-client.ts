@@ -127,7 +127,27 @@ async function searchProduct(query: string, preferFresh = false): Promise<OffPro
   const ranked = [...data.hits].sort(
     (a, b) => scoreProduct(b, searchQuery, preferFresh) - scoreProduct(a, searchQuery, preferFresh),
   )
-  const selected = ranked[0]
+  const selected =
+    ranked.find(
+      (product) => product.nutriments?.["energy-kcal_100g"] != null,
+    ) ?? null
+
+  if (!selected) {
+    logger.debug(
+      {
+        query: searchQuery,
+        preferFresh,
+        candidates: ranked.slice(0, 5).map((product) => ({
+          name: product.product_name ?? null,
+          score: scoreProduct(product, searchQuery, preferFresh),
+          kcalPer100g: product.nutriments?.["energy-kcal_100g"] ?? null,
+        })),
+      },
+      "No ranked OFF candidate has kcal data",
+    )
+    return null
+  }
+
   const selectedName = selected.product_name ?? null
 
   logger.debug(

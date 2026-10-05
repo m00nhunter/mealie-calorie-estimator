@@ -1,7 +1,7 @@
 import crypto from "node:crypto"
 import type {
   MealieRecipe, MealieIngredient, IngredientMatch, EstimateResult, NutritionPatch,
-  NutrientSet, MealieNutrition,
+  NutrientSet, MealieNutrition, RecipeNote,
 } from "../types.js"
 import { config } from "../config.js"
 import { convertToGrams } from "./unit-converter.js"

@@ -280,3 +280,40 @@ The test profile starts Mealie (SQLite), a mock Open Food Facts server, and the 
 ```sh
 npm run build
 ```
+
+
+## Fork: referenced recipe nutrition
+
+This fork adds recursive nutrition estimation for Mealie ingredients that reference another recipe.
+
+### Behavior
+
+- Referenced recipes are estimated recursively.
+- The referenced recipe's own servings/yield are used to calculate nutrition per portion.
+- The quantity on the parent recipe determines how many referenced-recipe portions are included.
+- Nested referenced recipes are supported.
+- Circular references are detected and ignored safely.
+- Referenced recipe slugs are included in the ingredient hash so changes to a reference trigger re-estimation.
+
+### Fork documentation
+
+- [UPSTREAM.md](./UPSTREAM.md) — upstream relationship and synchronization workflow
+- [CHANGELOG.md](./CHANGELOG.md) — fork changes and validation history
+- [DEVELOPMENT.md](./DEVELOPMENT.md) — development and testing
+- [DEPLOYMENT.md](./DEPLOYMENT.md) — production deployment and verification
+
+### Fork Docker image
+
+The feature image is published to GHCR:
+
+```text
+ghcr.io/m00nhunter/mealie-calorie-estimator:referenced-recipe-nutrition
+```
+
+The current versioned image is:
+
+```text
+ghcr.io/m00nhunter/mealie-calorie-estimator:1.13.0-referenced-recipe-nutrition
+```
+
+GitHub Actions runs the test suite and typecheck before publishing the Docker image.

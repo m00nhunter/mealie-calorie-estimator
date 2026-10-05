@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { computeIngredientHash, buildNutritionPatch, hasManualCalories, buildManualAckPatch } from "../src/services/estimator.js"
+import { computeIngredientHash, buildNutritionPatch, buildNutritionCalculationNote, mergeNutritionCalculationNote, hasManualCalories, buildManualAckPatch } from "../src/services/estimator.js"
 import type { MealieRecipe, EstimateResult, NutrientSet } from "../src/types.js"
 
 function makeRecipe(overrides: Partial<MealieRecipe> = {}): MealieRecipe {
@@ -11,6 +11,7 @@ function makeRecipe(overrides: Partial<MealieRecipe> = {}): MealieRecipe {
     recipeServings: 4,
     recipeIngredient: [],
     nutrition: null,
+    notes: [],
     tags: [],
     extras: {},
     householdId: null,
@@ -236,5 +237,54 @@ describe("buildManualAckPatch", () => {
     expect(patch.extras.my_user_extra).toBe("keepme")
     expect(patch.extras.calorie_estimator_tags).toBe(JSON.stringify(["high-protein"]))
     expect(patch.extras.calorie_estimator_hash).toBe("manual-hash")
+  })
+})
+
+
+describe("nutrition calculation details", () => {
+  it("builds an aligned breakdown with total and per-serving kcal", () => {
+    const result: EstimateResult = {
+      slug: "test",
+      servings: 4,
+      totalNutrients: n(5673),
+      perServingNutrients: n(1418),
+      matchedCount: 2,
+      unmatchedCount: 0,
+      unmatchedIngredients: [],
+      matchedIngredients: [
+        { name: "Chashu", grams: null, quantityLabel: "4 Portionen", kcalContribution: 1692, matched: true, nutrients: n(423) },
+        { name: "Schweinebauch", grams: 600, quantityLabel: "600 g", kcalContribution: 720, matched: true, nutrients: n(120) },
+      ],
+    }
+    const note = buildNutritionCalculationNote(result)
+    expect(note.title).toBe("Nutrition calculation details")
+    expect(note.text).toContain("Zutat")
+    expect(note.text).toContain("Chashu")
+    expect(note.text).toContain("4 Portionen")
+    expect(note.text).toContain("1'692")
+    expect(note.text).toContain("Gesamt")
+    expect(note.text).toContain("5'673")
+    expect(note.text).toContain("Pro Portion")
+    expect(note.text).toContain("1'418")
+    expect(note.text).toContain("```")
+  })
+
+  it("replaces only the estimator note and preserves existing notes", () => {
+    const recipe = makeRecipe({
+      notes: [
+        { title: "My note", text: "Keep this" },
+        { title: "Nutrition calculation details", text: "Old calculation" },
+      ],
+    })
+    const result: EstimateResult = {
+      slug: "test", servings: 2, totalNutrients: n(200), perServingNutrients: n(100),
+      matchedCount: 1, unmatchedCount: 0, unmatchedIngredients: [],
+      matchedIngredients: [{ name: "Milk", grams: 100, quantityLabel: "100 g", kcalContribution: 100, matched: true, nutrients: n(100) }],
+    }
+    const notes = mergeNutritionCalculationNote(recipe, result)
+    expect(notes).toHaveLength(2)
+    expect(notes.find((note) => note.title === "My note")?.text).toBe("Keep this")
+    expect(notes.filter((note) => note.title === "Nutrition calculation details")).toHaveLength(1)
+    expect(notes.find((note) => note.title === "Nutrition calculation details")?.text).toContain("100")
   })
 })

@@ -26,6 +26,12 @@ export interface MealieFood {
   aliases: string[]
 }
 
+export interface RecipeNote {
+  title: string
+  text: string
+  referenceId?: string
+}
+
 export interface MealieNutrition {
   calories: string | null
   carbohydrateContent: string | null
@@ -55,6 +61,7 @@ export interface MealieRecipe {
   recipeServings: number | null
   recipeIngredient: MealieIngredient[]
   nutrition: MealieNutrition | null
+  notes: RecipeNote[] | null
   tags: MealieTag[] | null
   extras: Record<string, string> | null
   householdId?: string | null
@@ -63,6 +70,7 @@ export interface MealieRecipe {
 
 export interface MealieRecipePatch {
   nutrition?: Partial<MealieNutrition>
+  notes?: RecipeNote[]
   extras?: Record<string, string>
   tags?: MealieTag[]
 }
@@ -128,6 +136,8 @@ export interface NutrientSet {
 export interface IngredientMatch {
   name: string
   grams: number | null
+  quantityLabel?: string
+  kcalContribution?: number | null
   matched: boolean
   nutrients: NutrientSet | null
   llmEstimated?: boolean

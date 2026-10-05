@@ -89,8 +89,12 @@ function scoreProduct(product: OffProduct, query: string, preferFresh: boolean):
 }
 
 async function searchProduct(query: string, preferFresh = false): Promise<OffProduct | null> {
+  const searchQuery = preferFresh && !FORM_PENALTY_TERMS.some((term) => normalize(query).includes(term))
+    ? `${query} frisch`
+    : query
+
   const params = new URLSearchParams({
-    q: query,
+    q: searchQuery,
     langs: config.openFoodFacts.language,
     page_size: "10",
     fields: OFF_NUTRIENT_FIELDS,
@@ -99,14 +103,14 @@ async function searchProduct(query: string, preferFresh = false): Promise<OffPro
   const url = `${config.openFoodFacts.searchBaseUrl}/search?${params}`
 
   await waitForRateLimit(RateLimitType.Search)
-  const res = await fetchWithRetry(url, query)
+  const res = await fetchWithRetry(url, searchQuery)
 
   if (!res) {
-    logger.warn({ query }, "OFF search failed after retries")
+    logger.warn({ query: searchQuery }, "OFF search failed after retries")
     return null
   }
   if (!res.ok) {
-    logger.warn({ status: res.status, query }, "OFF search returned error")
+    logger.warn({ status: res.status, query: searchQuery }, "OFF search returned error")
     return null
   }
 
@@ -114,26 +118,26 @@ async function searchProduct(query: string, preferFresh = false): Promise<OffPro
   try {
     data = (await res.json()) as OffSearchResult
   } catch {
-    logger.warn({ query }, "OFF returned non-JSON response")
+    logger.warn({ query: searchQuery }, "OFF returned non-JSON response")
     return null
   }
 
   if (!data.hits?.length) return null
 
   const ranked = [...data.hits].sort(
-    (a, b) => scoreProduct(b, query, preferFresh) - scoreProduct(a, query, preferFresh),
+    (a, b) => scoreProduct(b, searchQuery, preferFresh) - scoreProduct(a, searchQuery, preferFresh),
   )
   const selected = ranked[0]
 
   logger.debug(
     {
-      query,
+      query: searchQuery,
       preferFresh,
       selected: selected.product_name,
-      score: scoreProduct(selected, query, preferFresh),
+      score: scoreProduct(selected, searchQuery, preferFresh),
       candidates: ranked.slice(0, 5).map((product) => ({
         name: product.product_name,
-        score: scoreProduct(product, query, preferFresh),
+        score: scoreProduct(product, searchQuery, preferFresh),
         kcalPer100g: product.nutriments?.["energy-kcal_100g"] ?? null,
       })),
     },
@@ -156,8 +160,10 @@ export async function lookupNutrients(foodName: string, unitName?: string): Prom
   }
 
   const normalizedUnit = unitName?.trim().toLowerCase()
-  const preferFresh = normalizedUnit === "stück" || normalizedUnit === "stuck" ||
+  const isPieceUnit = normalizedUnit === "stück" || normalizedUnit === "stuck" ||
     normalizedUnit === "piece" || normalizedUnit === "pieces"
+  const hasExplicitForm = FORM_PENALTY_TERMS.some((term) => normalize(searchTerm).includes(term))
+  const preferFresh = isPieceUnit && !hasExplicitForm
 
   const product = await searchProduct(searchTerm, preferFresh)
 

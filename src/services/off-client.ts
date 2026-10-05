@@ -47,8 +47,8 @@ async function fetchWithRetry(url: string, query: string): Promise<Response | nu
   return lastResponse
 }
 
-function normalize(value: string): string {
-  return value
+function normalize(value: string | null | undefined): string {
+  return (value ?? "")
     .toLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
@@ -63,7 +63,7 @@ function searchTokens(value: string): string[] {
 
 function candidateText(product: OffProduct): string {
   return [product.product_name, product.categories, product.labels, product.ingredients_text]
-    .filter(Boolean)
+    .filter((value): value is string => Boolean(value))
     .join(" ")
 }
 
@@ -128,15 +128,16 @@ async function searchProduct(query: string, preferFresh = false): Promise<OffPro
     (a, b) => scoreProduct(b, searchQuery, preferFresh) - scoreProduct(a, searchQuery, preferFresh),
   )
   const selected = ranked[0]
+  const selectedName = selected.product_name ?? null
 
   logger.debug(
     {
       query: searchQuery,
       preferFresh,
-      selected: selected.product_name,
+      selected: selectedName,
       score: scoreProduct(selected, searchQuery, preferFresh),
       candidates: ranked.slice(0, 5).map((product) => ({
-        name: product.product_name,
+        name: product.product_name ?? null,
         score: scoreProduct(product, searchQuery, preferFresh),
         kcalPer100g: product.nutriments?.["energy-kcal_100g"] ?? null,
       })),
@@ -172,19 +173,19 @@ export async function lookupNutrients(foodName: string, unitName?: string): Prom
     return { nutrients: null, matched: false, productName: null }
   }
   if (!product.nutriments) {
-    logger.debug({ foodName, product: product.product_name }, "OFF match has no nutrient data")
-    return { nutrients: null, matched: false, productName: product.product_name }
+    logger.debug({ foodName, product: product.product_name ?? null }, "OFF match has no nutrient data")
+    return { nutrients: null, matched: false, productName: product.product_name ?? null }
   }
 
   const nutrients = extractNutrients(product.nutriments)
   if (nutrients.kcalPer100g === null) {
-    logger.debug({ foodName, product: product.product_name }, "OFF match has no kcal data")
-    return { nutrients: null, matched: false, productName: product.product_name }
+    logger.debug({ foodName, product: product.product_name ?? null }, "OFF match has no kcal data")
+    return { nutrients: null, matched: false, productName: product.product_name ?? null }
   }
 
-  logger.debug({ foodName, product: product.product_name }, "OFF match found")
+  logger.debug({ foodName, product: product.product_name ?? null }, "OFF match found")
   setCachedNutrients(foodName, nutrients)
-  return { nutrients, matched: true, productName: product.product_name }
+  return { nutrients, matched: true, productName: product.product_name ?? null }
 }
 
 function extractNutrients(n: OffNutriments): NutrientSet {

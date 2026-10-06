@@ -87,6 +87,45 @@ describe("estimateRecipe", () => {
     expect(result.perServingNutrients.kcalPer100g).toBe(150)
   })
 
+  it("uses an explicit OFF serving weight before the LLM for piece units", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const query = queryOf(input)
+      if (query === "Eier") {
+        return new Response(JSON.stringify({
+          hits: [{
+            product_name: "Œufs frais BIO",
+            serving_size: "1 egg (60 g)",
+            serving_quantity: 60,
+            serving_quantity_unit: "g",
+            nutriments: { "energy-kcal_100g": 143, "proteins_100g": 12.6 },
+          }],
+        }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        })
+      }
+      return emptyHitsResponse()
+    })
+
+    const result = await estimateRecipe(makeRecipe([{
+      quantity: 4,
+      unit: { id: "u-piece", name: "Stück", pluralName: "Stücke", abbreviation: "Stk.", standardQuantity: null, standardUnit: null },
+      food: { id: "eier", name: "Eier", pluralName: null, aliases: [] },
+      note: null,
+      display: "4 Stück Eier",
+      title: null,
+      original_text: null,
+    }]))
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(result.matchedCount).toBe(1)
+    expect(result.unmatchedCount).toBe(0)
+    expect(result.matchedIngredients[0].grams).toBe(240)
+    expect(result.matchedIngredients[0].llmEstimated).toBe(false)
+    expect(result.totalNutrients.kcalPer100g).toBeCloseTo(343.2, 5)
+    expect(result.perServingNutrients.kcalPer100g).toBeCloseTo(85.8, 5)
+  })
+
   it("matches ingredients concurrently and aggregates nutrients in order", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const query = queryOf(input)
@@ -129,7 +168,7 @@ describe("estimateRecipe", () => {
 
     const result = await estimateRecipe(makeRecipe([sliceUnit, unknownUnit]))
 
-    expect(fetchMock).not.toHaveBeenCalled()
+    expect(fetchMock).toHaveBeenCalledTimes(2)
     expect(result.matchedCount).toBe(0)
     expect(result.unmatchedCount).toBe(2)
     expect(result.matchedIngredients.map((i) => i.matched)).toEqual([false, false])

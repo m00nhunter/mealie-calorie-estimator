@@ -5,7 +5,7 @@ import type {
 } from "../types.js"
 import { config } from "../config.js"
 import { convertToGrams } from "./unit-converter.js"
-import { lookupNutrients } from "./off-client.js"
+import { lookupNutrients, lookupServingWeight } from "./off-client.js"
 import { estimateGrams, estimateNutrients } from "./llm-estimator.js"
 import { logger } from "../utils/logger.js"
 
@@ -124,6 +124,14 @@ async function evaluateIngredient(ing: MealieIngredient): Promise<IngredientOutc
   if (grams === null) {
     const unitName = ing.unit?.name
     if (unitName) {
+      const databaseGrams = await lookupServingWeight(foodName, unitName)
+      if (databaseGrams !== null) {
+        grams = quantity * databaseGrams
+        logger.debug({ foodName, unitName, gramsPerUnit: databaseGrams }, "Using OFF serving weight")
+      }
+    }
+
+    if (grams === null && unitName) {
       const llmGrams = await estimateGrams(quantity, unitName, foodName)
       if (llmGrams !== null) {
         grams = llmGrams

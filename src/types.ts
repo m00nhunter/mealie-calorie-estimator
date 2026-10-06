@@ -77,6 +77,9 @@ export interface OffSearchResult {
 
 export interface OffProduct {
   product_name: string
+  serving_size?: string | null
+  serving_quantity?: number | string | null
+  serving_quantity_unit?: string | null
   nutriments?: OffNutriments
   nutriscore_grade?: string
 }

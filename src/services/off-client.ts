@@ -162,12 +162,12 @@ async function searchProducts(query: string, pageSize = 1): Promise<OffProduct[]
 
   if (!res) {
     logger.warn({ query }, "OFF search failed after retries")
-    return null
+    return []
   }
 
   if (!res.ok) {
     logger.warn({ status: res.status, query }, "OFF search returned error")
-    return null
+    return []
   }
 
   let data: OffSearchResult
@@ -175,7 +175,7 @@ async function searchProducts(query: string, pageSize = 1): Promise<OffProduct[]
     data = (await res.json()) as OffSearchResult
   } catch {
     logger.warn({ query }, "OFF returned non-JSON response")
-    return null
+    return []
   }
 
   if (!data.hits || data.hits.length === 0) {

@@ -10,7 +10,85 @@ export interface OffLookupResult {
   productName: string | null
 }
 
-const OFF_NUTRIENT_FIELDS = ["product_name", "nutriments"].join(",")
+const OFF_NUTRIENT_FIELDS = [
+  "product_name",
+  "serving_size",
+  "serving_quantity",
+  "serving_quantity_unit",
+  "nutriments",
+].join(",")
+
+const NON_ITEM_SERVING_UNITS = new Set([
+  "g", "gram", "grams", "gramm", "gramme", "kg", "ml", "milliliter", "milliliters",
+  "l", "liter", "liters", "cl", "dl", "oz", "ounce", "ounces",
+  "portion", "portionen", "serving", "servings", "portion", "cup", "cups",
+  "teaspoon", "teaspoons", "tablespoon", "tablespoons",
+])
+
+function normalizeServingToken(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim()
+}
+
+function parseServingWeightPerUnit(product: OffProduct, unitName: string): number | null {
+  const servingSize = product.serving_size?.trim()
+  if (!servingSize) return null
+
+  const match = servingSize.match(/^\s*(\d+(?:[.,]\d+)?)\s*([^\d(]+?)(?:\s*\(|\s*[-–—:]|$)/i)
+  if (!match) return null
+
+  const count = Number.parseFloat(match[1].replace(",", "."))
+  const servingUnit = normalizeServingToken(match[2])
+  if (!Number.isFinite(count) || count <= 0 || !servingUnit) return null
+  if (NON_ITEM_SERVING_UNITS.has(servingUnit)) return null
+
+  let servingQuantity: number | null = null
+  if (typeof product.serving_quantity === "number") {
+    servingQuantity = product.serving_quantity
+  } else if (typeof product.serving_quantity === "string") {
+    const parsed = Number.parseFloat(product.serving_quantity.replace(",", "."))
+    if (Number.isFinite(parsed)) servingQuantity = parsed
+  }
+
+  if (servingQuantity === null) {
+    const grams = servingSize.match(/(\d+(?:[.,]\d+)?)\s*g\b/i)
+    if (!grams) return null
+    servingQuantity = Number.parseFloat(grams[1].replace(",", "."))
+  }
+
+  if (!Number.isFinite(servingQuantity) || servingQuantity <= 0) return null
+
+  const quantityUnit = normalizeServingToken(product.serving_quantity_unit ?? "")
+  if (quantityUnit && quantityUnit !== "g" && quantityUnit !== "gram" && quantityUnit !== "grams" && quantityUnit !== "gramm") {
+    return null
+  }
+
+  const requestedUnit = normalizeServingToken(unitName)
+  const requestedPiece = new Set(["stuck", "stucke", "piece", "pieces", "pc", "pcs"]).has(requestedUnit)
+  const requestedSlice = new Set(["scheibe", "scheiben", "slice", "slices"]).has(requestedUnit)
+  const requestedClove = new Set(["zehe", "zehen", "clove", "cloves"]).has(requestedUnit)
+
+  if (requestedPiece) {
+    return servingQuantity / count
+  }
+
+  if (requestedSlice && new Set(["scheibe", "scheiben", "slice", "slices"]).has(servingUnit)) {
+    return servingQuantity / count
+  }
+
+  if (requestedClove && new Set(["zehe", "zehen", "clove", "cloves"]).has(servingUnit)) {
+    return servingQuantity / count
+  }
+
+  if (normalizeServingToken(requestedUnit) === servingUnit) {
+    return servingQuantity / count
+  }
+
+  return null
+}
 
 const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504])
 
@@ -68,11 +146,11 @@ function extractNutrients(n: OffNutriments): NutrientSet {
   }
 }
 
-async function searchProduct(query: string): Promise<OffProduct | null> {
+async function searchProducts(query: string, pageSize = 1): Promise<OffProduct[]> {
   const params = new URLSearchParams({
     q: query,
     langs: config.openFoodFacts.language,
-    page_size: "1",
+    page_size: pageSize.toString(),
     fields: OFF_NUTRIENT_FIELDS,
   })
 
@@ -101,10 +179,33 @@ async function searchProduct(query: string): Promise<OffProduct | null> {
   }
 
   if (!data.hits || data.hits.length === 0) {
-    return null
+    return []
   }
 
-  return data.hits[0]
+  return data.hits
+}
+
+async function searchProduct(query: string): Promise<OffProduct | null> {
+  const products = await searchProducts(query, 1)
+  return products[0] ?? null
+}
+
+export async function lookupServingWeight(foodName: string, unitName: string): Promise<number | null> {
+  const products = await searchProducts(foodName, 10)
+
+  for (const product of products) {
+    const grams = parseServingWeightPerUnit(product, unitName)
+    if (grams !== null) {
+      logger.debug(
+        { foodName, unitName, product: product.product_name, grams },
+        "OFF serving weight found",
+      )
+      return grams
+    }
+  }
+
+  logger.debug({ foodName, unitName }, "No explicit OFF serving weight found")
+  return null
 }
 
 export async function lookupNutrients(foodName: string, unitName?: string): Promise<OffLookupResult> {

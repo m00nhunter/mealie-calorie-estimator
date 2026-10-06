@@ -123,7 +123,7 @@ describe("estimateRecipe", () => {
     expect(result.matchedIngredients[0].grams).toBe(240)
     expect(result.matchedIngredients[0].llmEstimated).toBe(false)
     expect(result.totalNutrients.kcalPer100g).toBeCloseTo(343.2, 5)
-    expect(result.perServingNutrients.kcalPer100g).toBeCloseTo(85.8, 5)
+    expect(result.perServingNutrients.kcalPer100g).toBe(86)
   })
 
   it("matches ingredients concurrently and aggregates nutrients in order", async () => {

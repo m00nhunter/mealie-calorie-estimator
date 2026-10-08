@@ -9,15 +9,25 @@ import { lookupNutrients, lookupServingWeight } from "./off-client.js"
 import { estimateGrams, estimateNutrients } from "./llm-estimator.js"
 import { logger } from "../utils/logger.js"
 
-export function computeIngredientHash(recipe: MealieRecipe): string {
+export function computeIngredientHash(recipe: MealieRecipe, stack: ReadonlySet<string> = new Set([recipe.slug])): string {
   const parts: string[] = []
 
   for (const ing of recipe.recipeIngredient) {
     const qty = ing.quantity ?? 0
     const unitName = ing.unit?.name ?? ""
     const foodName = ing.food?.name ?? ""
-    const referencedSlug = ing.referencedRecipe?.slug ?? ""
-    parts.push(`${qty}|${unitName}|${foodName}|${referencedSlug}`)
+    const referenced = ing.referencedRecipe
+    // Ingredients without a reference keep the exact previous format, so existing hashes stay valid.
+    let referencedPart = ""
+    if (referenced) {
+      // Include the referenced recipe's own hash, so changes inside it invalidate this recipe too.
+      // Cycles are cut off here; estimateRecipe handles them as unmatched.
+      const nested = stack.has(referenced.slug)
+        ? "cycle"
+        : computeIngredientHash(referenced, new Set([...stack, referenced.slug]))
+      referencedPart = `${referenced.slug}#${nested}`
+    }
+    parts.push(`${qty}|${unitName}|${foodName}|${referencedPart}`)
   }
 
   parts.sort()

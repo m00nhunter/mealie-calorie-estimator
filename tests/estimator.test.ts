@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto"
 import { describe, it, expect } from "vitest"
 import { computeIngredientHash, buildNutritionPatch, hasManualCalories, buildManualAckPatch } from "../src/services/estimator.js"
 import type { MealieRecipe, EstimateResult, NutrientSet } from "../src/types.js"
@@ -115,6 +116,73 @@ describe("computeIngredientHash", () => {
       ],
     })
     expect(computeIngredientHash(recipe)).toBeTruthy()
+  })
+
+  describe("referenced recipes", () => {
+    function food(name: string, quantity: number, unitName = "g") {
+      return {
+        quantity, unit: { id: unitName, name: unitName, pluralName: null, abbreviation: unitName, standardQuantity: null, standardUnit: null },
+        food: { id: name, name, pluralName: null, aliases: [] },
+        note: null, display: `${quantity} ${unitName} ${name}`, title: null, original_text: null,
+      }
+    }
+
+    function parentOf(child: MealieRecipe): MealieRecipe {
+      return makeRecipe({
+        slug: "tonkotsu-ramen",
+        recipeIngredient: [
+          { quantity: 2, unit: null, food: null, note: null, display: "2 Ramen-Eier", title: null, original_text: null, referencedRecipe: child },
+        ],
+      })
+    }
+
+    it("changes when an ingredient of the referenced recipe changes", () => {
+      const before = makeRecipe({ slug: "ramen-eier", recipeIngredient: [food("egg", 6, "piece")] })
+      const after = makeRecipe({ slug: "ramen-eier", recipeIngredient: [food("egg", 4, "piece")] })
+
+      expect(computeIngredientHash(parentOf(before))).not.toBe(computeIngredientHash(parentOf(after)))
+    })
+
+    it("changes when the servings of the referenced recipe change", () => {
+      const before = makeRecipe({ slug: "ramen-eier", recipeServings: 4 })
+      const after = makeRecipe({ slug: "ramen-eier", recipeServings: 6 })
+
+      expect(computeIngredientHash(parentOf(before))).not.toBe(computeIngredientHash(parentOf(after)))
+    })
+
+    it("changes when a nested referenced recipe changes", () => {
+      const marinade = (soy: number) => makeRecipe({ slug: "marinade", recipeIngredient: [food("soy sauce", soy, "ml")] })
+      const eggs = (soy: number) => makeRecipe({
+        slug: "ramen-eier",
+        recipeIngredient: [
+          { quantity: 1, unit: null, food: null, note: null, display: "1 Marinade", title: null, original_text: null, referencedRecipe: marinade(soy) },
+        ],
+      })
+
+      expect(computeIngredientHash(parentOf(eggs(50)))).not.toBe(computeIngredientHash(parentOf(eggs(80))))
+    })
+
+    it("is stable when the referenced recipe is unchanged", () => {
+      const make = () => makeRecipe({ slug: "ramen-eier", recipeIngredient: [food("egg", 6, "piece")] })
+
+      expect(computeIngredientHash(parentOf(make()))).toBe(computeIngredientHash(parentOf(make())))
+    })
+
+    it("does not change the hash of recipes without references", () => {
+      const recipe = makeRecipe({ recipeIngredient: [food("flour", 200)] })
+      const previousFormat = "200|g|flour|,servings:4,yieldQuantity:"
+
+      expect(computeIngredientHash(recipe)).toBe(createHash("sha256").update(previousFormat).digest("hex"))
+    })
+
+    it("terminates on circular references", () => {
+      const a = makeRecipe({ slug: "a" })
+      const b = makeRecipe({ slug: "b" })
+      a.recipeIngredient = [{ quantity: 1, unit: null, food: null, note: null, display: "b", title: null, original_text: null, referencedRecipe: b }]
+      b.recipeIngredient = [{ quantity: 1, unit: null, food: null, note: null, display: "a", title: null, original_text: null, referencedRecipe: a }]
+
+      expect(computeIngredientHash(a)).toBeTruthy()
+    })
   })
 })
 

@@ -8,7 +8,7 @@ import { convertToGrams } from "./unit-converter.js"
 import { lookupNutrients, lookupServingWeight } from "./off-client.js"
 import { estimateGrams, estimateNutrients } from "./llm-estimator.js"
 import { logger } from "../utils/logger.js"
-import { parseEdiblePercent } from "./edible-share.js"
+import { parseEdiblePercent, ingredientNoteHint } from "./edible-share.js"
 import { PROGRESS_NOTE_TITLE, type ProgressTracker } from "./progress.js"
 
 export function computeIngredientHash(recipe: MealieRecipe, stack: ReadonlySet<string> = new Set([recipe.slug])): string {
@@ -159,7 +159,7 @@ async function evaluateIngredient(ing: MealieIngredient): Promise<IngredientOutc
     }
 
     if (grams === null && unitName) {
-      const llmGrams = await estimateGrams(quantity, unitName, foodName)
+      const llmGrams = await estimateGrams(quantity, unitName, foodName, ingredientNoteHint(ing.note))
       if (llmGrams !== null) {
         grams = llmGrams
         llmEstimated = true

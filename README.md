@@ -315,6 +315,10 @@ Some ingredients are only partly eaten, e.g. bones in a stock or a marinade that
 
 The marker works for normal ingredients and for linked recipes. The share is listed in the "Nutrition calculation details" note and is part of the ingredient hash, so changing it triggers a new estimation.
 
+### Ingredient notes and weight estimates
+
+When a weight has to be estimated by the LLM (for example for "Stück"), the ingredient's note field is passed along, so "klein", "gross" or "ohne Knochen" are taken into account. Markers like `[30%]` are removed first. Estimates are cached per ingredient and note.
+
 ### Progress of a running estimation
 
 Estimating a recipe can take several minutes because Open Food Facts allows only a limited number of searches per minute. While it runs, the recipe notes show a "Nutrition calculation progress" entry such as `█████░░░░░ 50 % (7 von 14 Zutaten, 2 Min 10 s)`. Reload the recipe page in Mealie to see the current state. The entry is replaced by the "Nutrition calculation details" table when the estimation is done, or removed if it fails. Linked recipes count with their own ingredients.

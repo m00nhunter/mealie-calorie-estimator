@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll, beforeEach } from "vitest"
-import { parseEdiblePercent } from "../src/services/edible-share.js"
+import { parseEdiblePercent, ingredientNoteHint } from "../src/services/edible-share.js"
 import { computeIngredientHash, estimateRecipe } from "../src/services/estimator.js"
 import { initCache } from "../src/utils/cache.js"
 import { config } from "../src/config.js"
@@ -61,6 +61,20 @@ describe("parseEdiblePercent", () => {
 
   it("treats nicht mitrechnen as 0", () => {
     expect(parseEdiblePercent("Nicht mitrechnen")).toBe(0)
+  })
+})
+
+describe("ingredientNoteHint", () => {
+  it("returns the note without markers", () => {
+    expect(ingredientNoteHint("klein")).toBe("klein")
+    expect(ingredientNoteHint("ohne Knochen [30%]")).toBe("ohne Knochen")
+    expect(ingredientNoteHint("[30%]")).toBeNull()
+    expect(ingredientNoteHint("nicht mitrechnen")).toBeNull()
+    expect(ingredientNoteHint(null)).toBeNull()
+  })
+
+  it("limits the length", () => {
+    expect(ingredientNoteHint("x".repeat(200))).toHaveLength(80)
   })
 })
 

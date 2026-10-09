@@ -69,6 +69,11 @@ export const config = {
     debounceMs: Number.parseInt(process.env.EVENT_DEBOUNCE_MS || "2000", 10),
   },
 
+  progress: {
+    enabled: (process.env.PROGRESS_ENABLED || "true").toLowerCase() === "true",
+    intervalMs: Number.parseInt(process.env.PROGRESS_INTERVAL_MS || "10000", 10),
+  },
+
   cache: {
     dbPath: process.env.CACHE_DB_PATH || "data/cache.db",
   },

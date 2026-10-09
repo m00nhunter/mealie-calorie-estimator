@@ -122,6 +122,8 @@ It's recommended to install it next to your Mealie instance using docker-compose
 | `LLM_MAX_TOKENS_GRAMS` | `10` | Max tokens for gram estimation responses |
 | `LLM_MAX_TOKENS_NUTRIENTS` | `200` | Max tokens for nutrient estimation responses |
 | `LLM_TIMEOUT_MS` | `300000` | Timeout per LLM request (5 minutes, enough for a cold start of a local model). A timed-out request counts as no estimate for that ingredient |
+| `PROGRESS_ENABLED` | `true` | Show the progress of a running estimation in the recipe notes |
+| `PROGRESS_INTERVAL_MS` | `10000` | Minimum time between two progress updates. Estimations that finish faster write no progress at all |
 | `ESTIMATE_STRATEGY` | `all` | Estimation strategy: `all` (estimate every recipe) or `tagged` (only estimate recipes with the `ESTIMATE_TAG` tag) |
 | `ESTIMATE_TAG` | `estimate` | Tag name to check when `ESTIMATE_STRATEGY=tagged` |
 | `EVENT_DEBOUNCE_MS` | `2000` | Quiet period before a recipe event is processed. Bursts of rapid saves for the same recipe are coalesced into one run and all writes for a recipe are serialized, so concurrent patches cannot duplicate ingredients |
@@ -312,6 +314,12 @@ Some ingredients are only partly eaten, e.g. bones in a stock or a marinade that
 - Ingredients without a marker are counted in full
 
 The marker works for normal ingredients and for linked recipes. The share is listed in the "Nutrition calculation details" note and is part of the ingredient hash, so changing it triggers a new estimation.
+
+### Progress of a running estimation
+
+Estimating a recipe can take several minutes because Open Food Facts allows only a limited number of searches per minute. While it runs, the recipe notes show a "Nutrition calculation progress" entry such as `█████░░░░░ 50 % (7 von 14 Zutaten, 2 Min 10 s)`. Reload the recipe page in Mealie to see the current state. The entry is replaced by the "Nutrition calculation details" table when the estimation is done, or removed if it fails. Linked recipes count with their own ingredients.
+
+If an estimation fails, the same ingredients are not retried automatically for one minute, so the progress updates cannot trigger an endless loop of new runs.
 
 ### Fork documentation
 

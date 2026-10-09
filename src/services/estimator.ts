@@ -9,6 +9,7 @@ import { lookupNutrients, lookupServingWeight } from "./off-client.js"
 import { estimateGrams, estimateNutrients } from "./llm-estimator.js"
 import { logger } from "../utils/logger.js"
 import { parseEdiblePercent } from "./edible-share.js"
+import { PROGRESS_NOTE_TITLE, type ProgressTracker } from "./progress.js"
 
 export function computeIngredientHash(recipe: MealieRecipe, stack: ReadonlySet<string> = new Set([recipe.slug])): string {
   const parts: string[] = []
@@ -184,13 +185,13 @@ async function evaluateIngredient(ing: MealieIngredient): Promise<IngredientOutc
   return { foodName, grams, quantityLabel: formatQuantity(quantity, ing.unit), nutrients: result.nutrients, kcalContribution: result.nutrients.kcalPer100g !== null ? result.nutrients.kcalPer100g * grams / 100 : null, llmEstimated, gramsSource }
 }
 
-interface EstimateContext { stack: Set<string> }
+interface EstimateContext { stack: Set<string>; progress?: ProgressTracker }
 
 async function evaluateReferencedRecipe(ing: MealieIngredient, context: EstimateContext): Promise<{ nutrients: NutrientSet; name: string; quantityLabel: string } | null> {
   const referenced = ing.referencedRecipe
   const quantity = ing.quantity
   if (!referenced?.slug || quantity == null || quantity <= 0 || context.stack.has(referenced.slug)) return null
-  const result = await estimateRecipe(referenced, { stack: new Set([...context.stack, referenced.slug]) })
+  const result = await estimateRecipe(referenced, { stack: new Set([...context.stack, referenced.slug]), progress: context.progress })
   if (result.servings == null || result.servings <= 0 || result.totalNutrients.kcalPer100g === null) return null
   return { name: referenced.name || referenced.slug, quantityLabel: formatQuantity(quantity, ing.unit), nutrients: scaleNutrients(result.totalNutrients, quantity / result.servings) }
 }
@@ -202,9 +203,14 @@ export async function estimateRecipe(recipe: MealieRecipe, context: EstimateCont
 
   const outcomes = await Promise.all(recipe.recipeIngredient.map(async (ing) => {
     const percent = parseEdiblePercent(ing.note)
-    if (percent === 0) return { kind: "skipped" as const, ingredient: ing, percent }
+    if (percent === 0) {
+      if (!ing.referencedRecipe) context.progress?.step()
+      return { kind: "skipped" as const, ingredient: ing, percent }
+    }
     if (ing.referencedRecipe) return { kind: "recipe" as const, ingredient: ing, percent, result: await evaluateReferencedRecipe(ing, context) }
-    return { kind: "food" as const, percent, result: await evaluateIngredient(ing) }
+    const result = await evaluateIngredient(ing)
+    context.progress?.step()
+    return { kind: "food" as const, percent, result }
   }))
 
   for (const outcome of outcomes) {
@@ -331,7 +337,7 @@ export function buildNutritionCalculationNote(result: EstimateResult): RecipeNot
 export function mergeNutritionCalculationNote(recipe: MealieRecipe, result: EstimateResult): RecipeNote[] {
   const note = buildNutritionCalculationNote(result)
   const existing = recipe.notes ?? []
-  return [...existing.filter((item) => item.title !== NUTRITION_DETAILS_NOTE_TITLE), note]
+  return [...existing.filter((item) => item.title !== NUTRITION_DETAILS_NOTE_TITLE && item.title !== PROGRESS_NOTE_TITLE), note]
 }
 
 export function buildNutritionPatch(

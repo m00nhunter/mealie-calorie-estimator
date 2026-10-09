@@ -17,11 +17,8 @@ export function computeIngredientHash(recipe: MealieRecipe, stack: ReadonlySet<s
     const unitName = ing.unit?.name ?? ""
     const foodName = ing.food?.name ?? ""
     const referenced = ing.referencedRecipe
-    // Ingredients without a reference keep the exact previous format, so existing hashes stay valid.
     let referencedPart = ""
     if (referenced) {
-      // Include the referenced recipe's own hash, so changes inside it invalidate this recipe too.
-      // Cycles are cut off here; estimateRecipe handles them as unmatched.
       const nested = stack.has(referenced.slug)
         ? "cycle"
         : computeIngredientHash(referenced, new Set([...stack, referenced.slug]))
@@ -183,7 +180,7 @@ async function evaluateReferencedRecipe(ing: MealieIngredient, context: Estimate
   if (!referenced?.slug || quantity == null || quantity <= 0 || context.stack.has(referenced.slug)) return null
   const result = await estimateRecipe(referenced, { stack: new Set([...context.stack, referenced.slug]) })
   if (result.servings == null || result.servings <= 0 || result.totalNutrients.kcalPer100g === null) return null
-  return { name: referenced.name || referenced.slug, quantityLabel: formatQuantity(quantity, ing.unit), nutrients: scaleNutrients(result.perServingNutrients, quantity) }
+  return { name: referenced.name || referenced.slug, quantityLabel: formatQuantity(quantity, ing.unit), nutrients: scaleNutrients(result.totalNutrients, quantity / result.servings) }
 }
 
 export async function estimateRecipe(recipe: MealieRecipe, context: EstimateContext = { stack: new Set([recipe.slug]) }): Promise<EstimateResult> {

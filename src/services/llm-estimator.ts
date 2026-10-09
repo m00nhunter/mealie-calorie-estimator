@@ -39,6 +39,7 @@ export async function estimateGrams(quantity: number, unitName: string, foodName
         temperature: config.llm.temperature,
         max_tokens: config.llm.maxTokensGrams,
       }),
+      signal: AbortSignal.timeout(config.llm.timeoutMs),
     })
 
     if (!res.ok) {
@@ -101,6 +102,7 @@ export async function estimateNutrients(foodName: string): Promise<NutrientSet |
         temperature: config.llm.temperature,
         max_tokens: config.llm.maxTokensNutrients,
       }),
+      signal: AbortSignal.timeout(config.llm.timeoutMs),
     })
 
     if (!res.ok) {

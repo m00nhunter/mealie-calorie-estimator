@@ -115,7 +115,10 @@ async function fetchWithRetry(url: string, query: string): Promise<Response | nu
     }
 
     try {
-      const res = await fetch(url, { headers: { "User-Agent": userAgent } })
+      const res = await fetch(url, {
+        headers: { "User-Agent": userAgent },
+        signal: AbortSignal.timeout(config.openFoodFacts.timeoutMs),
+      })
       if (res.ok || !RETRYABLE_STATUS.has(res.status)) return res
       lastResponse = res
       logger.debug({ query, attempt, status: res.status }, "OFF search returned retryable status")
@@ -155,8 +158,10 @@ function scoreProduct(product: OffProduct, query: string, preferFresh: boolean):
   const queryTokens = searchTokens(query)
   let score = 0
 
-  if (name === queryNormalized) score += 100
-  if (name.includes(queryNormalized) || queryNormalized.includes(name)) score += 50
+  if (name && queryNormalized) {
+    if (name === queryNormalized) score += 100
+    if (name.includes(queryNormalized) || queryNormalized.includes(name)) score += 50
+  }
 
   for (const token of queryTokens) {
     if (name.split(" ").includes(token)) score += 20
@@ -209,9 +214,11 @@ async function searchProducts(query: string, pageSize = 1): Promise<OffProduct[]
 }
 
 async function searchProduct(query: string, preferFresh = false): Promise<OffProduct | null> {
-  const searchQuery = preferFresh && !FORM_PENALTY_TERMS.some((term) => normalize(query).includes(term))
-    ? `${query} frisch`
-    : query
+  const normalizedQuery = normalize(query)
+  const addFresh = preferFresh &&
+    !FORM_PENALTY_TERMS.some((term) => normalizedQuery.includes(term)) &&
+    !FRESH_TERMS.some((term) => normalizedQuery.split(" ").includes(term))
+  const searchQuery = addFresh ? `${query} frisch` : query
 
   const hits = await searchProducts(searchQuery, 10)
   if (hits.length === 0) return null

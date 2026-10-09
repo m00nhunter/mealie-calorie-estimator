@@ -111,3 +111,43 @@ describe("estimateGrams", () => {
     expect(result).toBeNull()
   })
 })
+
+describe("estimateGrams timeout", () => {
+  it("passes an abort signal to the request", async () => {
+    config.llm.enabled = true
+    config.llm.apiKey = "sk-test"
+
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        choices: [{ message: { content: "100" } }],
+      }),
+    })
+    vi.stubGlobal("fetch", mockFetch)
+
+    await estimateGrams(1, "Dose", "Mais")
+
+    expect(mockFetch.mock.calls[0][1].signal).toBeInstanceOf(AbortSignal)
+  })
+
+  it("returns null when the request times out", async () => {
+    config.llm.enabled = true
+    config.llm.apiKey = "sk-test"
+    const originalTimeout = config.llm.timeoutMs
+    config.llm.timeoutMs = 10
+
+    const mockFetch = vi.fn().mockImplementation((_url: string, init: RequestInit) =>
+      new Promise((_resolve, reject) => {
+        init.signal?.addEventListener("abort", () => reject(init.signal?.reason))
+      }),
+    )
+    vi.stubGlobal("fetch", mockFetch)
+
+    try {
+      const result = await estimateGrams(1, "Glas", "Gurken")
+      expect(result).toBeNull()
+    } finally {
+      config.llm.timeoutMs = originalTimeout
+    }
+  })
+})

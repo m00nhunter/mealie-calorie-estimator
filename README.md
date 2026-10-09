@@ -112,6 +112,7 @@ It's recommended to install it next to your Mealie instance using docker-compose
 | `OFF_BASE_URL` | `https://world.openfoodfacts.org` | Open Food Facts base URL |
 | `OFF_MAX_RETRIES` | `3` | Retries for transient OFF search errors (429/5xx) |
 | `OFF_RETRY_BACKOFF_MS` | `500` | Base backoff between retries (doubles each attempt) |
+| `OFF_TIMEOUT_MS` | `20000` | Timeout per Open Food Facts request. A timed-out request counts as a failed attempt and is retried |
 | `LLM_ENABLED` | `false` | Enable LLM fallback for custom units and unmatched foods |
 | `LLM_API_KEY` | — | API key for OpenAI-compatible endpoint |
 | `LLM_BASE_URL` | `https://api.mistral.ai/v1` | LLM API base URL |
@@ -120,6 +121,7 @@ It's recommended to install it next to your Mealie instance using docker-compose
 | `LLM_TEMPERATURE` | `0.1` | LLM sampling temperature |
 | `LLM_MAX_TOKENS_GRAMS` | `10` | Max tokens for gram estimation responses |
 | `LLM_MAX_TOKENS_NUTRIENTS` | `200` | Max tokens for nutrient estimation responses |
+| `LLM_TIMEOUT_MS` | `120000` | Timeout per LLM request. A timed-out request counts as no estimate for that ingredient |
 | `ESTIMATE_STRATEGY` | `all` | Estimation strategy: `all` (estimate every recipe) or `tagged` (only estimate recipes with the `ESTIMATE_TAG` tag) |
 | `ESTIMATE_TAG` | `estimate` | Tag name to check when `ESTIMATE_STRATEGY=tagged` |
 | `EVENT_DEBOUNCE_MS` | `2000` | Quiet period before a recipe event is processed. Bursts of rapid saves for the same recipe are coalesced into one run and all writes for a recipe are serialized, so concurrent patches cannot duplicate ingredients |

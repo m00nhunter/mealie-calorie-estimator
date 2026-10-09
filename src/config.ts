@@ -43,6 +43,7 @@ export const config = {
     cacheTtlMs: Number.parseInt(process.env.OFF_CACHE_TTL || "86400", 10) * 1000,
     maxRetries: Number.parseInt(process.env.OFF_MAX_RETRIES || "3", 10),
     retryBackoffMs: Number.parseInt(process.env.OFF_RETRY_BACKOFF_MS || "500", 10),
+    timeoutMs: Number.parseInt(process.env.OFF_TIMEOUT_MS || "20000", 10),
     userAgent: process.env.OFF_USER_AGENT || `mealie-calorie-estimator/${version} (mail@timo-reymann.de)`,
   },
 
@@ -53,6 +54,7 @@ export const config = {
     apiKey: process.env.LLM_API_KEY || "",
     model: process.env.LLM_MODEL || "mistral-small-latest",
     rateLimit: Number.parseInt(process.env.LLM_RATE_LIMIT || "30", 10),
+    timeoutMs: Number.parseInt(process.env.LLM_TIMEOUT_MS || "120000", 10),
     temperature: Number.parseFloat(process.env.LLM_TEMPERATURE || "0.1"),
     maxTokensGrams: Number.parseInt(process.env.LLM_MAX_TOKENS_GRAMS || "10", 10),
     maxTokensNutrients: Number.parseInt(process.env.LLM_MAX_TOKENS_NUTRIENTS || "200", 10),

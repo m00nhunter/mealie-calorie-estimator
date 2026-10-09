@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto"
 import { describe, it, expect } from "vitest"
-import { computeIngredientHash, buildNutritionPatch, buildNutritionCalculationNote, mergeNutritionCalculationNote, hasManualCalories, buildManualAckPatch } from "../src/services/estimator.js"
+import { computeIngredientHash, CALCULATION_VERSION, buildNutritionPatch, buildNutritionCalculationNote, mergeNutritionCalculationNote, hasManualCalories, buildManualAckPatch } from "../src/services/estimator.js"
 import type { MealieRecipe, EstimateResult, NutrientSet } from "../src/types.js"
 
 function makeRecipe(overrides: Partial<MealieRecipe> = {}): MealieRecipe {
@@ -169,9 +169,9 @@ describe("computeIngredientHash", () => {
       expect(computeIngredientHash(parentOf(make()))).toBe(computeIngredientHash(parentOf(make())))
     })
 
-    it("does not change the hash of recipes without references", () => {
+    it("keeps the plain format for recipes without references or notes", () => {
       const recipe = makeRecipe({ recipeIngredient: [food("flour", 200)] })
-      const previousFormat = "200|g|flour|,servings:4,yieldQuantity:"
+      const previousFormat = `200|g|flour|,servings:4,yieldQuantity:,calc:${CALCULATION_VERSION}`
 
       expect(computeIngredientHash(recipe)).toBe(createHash("sha256").update(previousFormat).digest("hex"))
     })

@@ -79,12 +79,20 @@ describe("ingredientNoteHint", () => {
 })
 
 describe("computeIngredientHash with edible percent", () => {
-  it("keeps the hash for notes without marker and changes it with a marker", () => {
-    const plain = computeIngredientHash(recipe([gramIngredient("Knochen", 100, "am besten Spitzbein")]))
+  it("changes the hash when the note or the percentage changes", () => {
     const withoutNote = computeIngredientHash(recipe([gramIngredient("Knochen", 100)]))
+    const withNote = computeIngredientHash(recipe([gramIngredient("Knochen", 100, "am besten Spitzbein")]))
+    const otherNote = computeIngredientHash(recipe([gramIngredient("Knochen", 100, "klein")]))
     const marked = computeIngredientHash(recipe([gramIngredient("Knochen", 100, "[30%]")]))
-    expect(plain).toBe(withoutNote)
-    expect(marked).not.toBe(plain)
+    expect(withNote).not.toBe(withoutNote)
+    expect(otherNote).not.toBe(withNote)
+    expect(marked).not.toBe(withoutNote)
+  })
+
+  it("changes the hash when the standard values of a unit change", () => {
+    const base = gramIngredient("Sake", 1)
+    const standardized = { ...base, unit: { ...base.unit!, standardQuantity: 15, standardUnit: "milliliter" } }
+    expect(computeIngredientHash(recipe([standardized]))).not.toBe(computeIngredientHash(recipe([base])))
   })
 })
 

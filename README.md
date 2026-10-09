@@ -299,6 +299,10 @@ This fork adds recursive nutrition estimation for Mealie ingredients that refere
 - Circular references are detected and ignored safely.
 - The ingredient hash includes the ingredients and servings of referenced recipes (recursively), so processing the parent after a change in a referenced recipe re-estimates it. The parent is not re-estimated automatically when only the referenced recipe is saved.
 
+### When a recipe is estimated again
+
+A recipe is only estimated again when its ingredient hash changes. The hash covers quantities, units, foods, linked recipes, the servings, the ingredient notes, the standard values of the units from Mealie and a calculation version. So saving a recipe after changing any of these is enough, and after an update of the estimator that changes the calculation (the version is raised) every recipe is estimated again the next time it is saved. Saving without a change does nothing; use `POST /estimate` to force a new estimation.
+
 ### Nutrition calculation details
 
 - The recipe notes get a "Nutrition calculation details" entry as a Markdown table with quantity, weight in grams and calories per ingredient. Weights that were not given in grams are marked with their source (`Open Food Facts` = serving size from Open Food Facts, `LLM` = estimated by the LLM). It is replaced on every estimation, other notes stay untouched.

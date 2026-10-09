@@ -11,6 +11,13 @@ import { logger } from "../utils/logger.js"
 import { parseEdiblePercent, ingredientNoteHint } from "./edible-share.js"
 import { PROGRESS_NOTE_TITLE, type ProgressTracker } from "./progress.js"
 
+export const CALCULATION_VERSION = 2
+
+function standardUnitPart(ing: MealieIngredient): string {
+  const unit = ing.unit
+  return unit?.standardQuantity != null && unit.standardUnit ? `|std:${unit.standardQuantity}${unit.standardUnit}` : ""
+}
+
 export function computeIngredientHash(recipe: MealieRecipe, stack: ReadonlySet<string> = new Set([recipe.slug])): string {
   const parts: string[] = []
 
@@ -28,12 +35,15 @@ export function computeIngredientHash(recipe: MealieRecipe, stack: ReadonlySet<s
     }
     const percent = parseEdiblePercent(ing.note)
     const percentPart = percent === null ? "" : `|edible:${percent}`
-    parts.push(`${qty}|${unitName}|${foodName}|${referencedPart}${percentPart}`)
+    const hint = ingredientNoteHint(ing.note)
+    const hintPart = hint ? `|note:${hint}` : ""
+    parts.push(`${qty}|${unitName}|${foodName}|${referencedPart}${percentPart}${hintPart}${standardUnitPart(ing)}`)
   }
 
   parts.sort()
   parts.push(`servings:${recipe.recipeServings ?? ""}`)
   parts.push(`yieldQuantity:${recipe.recipeYieldQuantity ?? ""}`)
+  parts.push(`calc:${CALCULATION_VERSION}`)
   const hash = crypto.createHash("sha256").update(parts.join(",")).digest("hex")
   return hash
 }

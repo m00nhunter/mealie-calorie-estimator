@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - feature/referenced-recipe-nutrition
+    tags:
+      - "v*.*.*"
   workflow_dispatch:
 
 env:
@@ -53,11 +55,22 @@ jobs:
       - name: Set up Buildx
         uses: docker/setup-buildx-action@v3
 
+      - name: Image tags and labels
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          flavor: |
+            latest=false
+          tags: |
+            type=raw,value=referenced-recipe-nutrition,enable=${{ github.ref_type == 'branch' }}
+            type=sha,prefix=sha-,format=short
+            type=semver,pattern={{version}}
+
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
           context: .
           push: true
-          tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:referenced-recipe-nutrition
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:1.13.0-referenced-recipe-nutrition
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}

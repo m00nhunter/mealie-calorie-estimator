@@ -328,10 +328,6 @@ The feature image is published to GHCR:
 ghcr.io/m00nhunter/mealie-calorie-estimator:referenced-recipe-nutrition
 ```
 
-The current versioned image is:
-
-```text
-ghcr.io/m00nhunter/mealie-calorie-estimator:1.13.0-referenced-recipe-nutrition
-```
+Every build is also published with a fixed tag `sha-<commit>`. Releases get a version number: pushing the git tag `v1.14.0` publishes `ghcr.io/m00nhunter/mealie-calorie-estimator:1.14.0`. See [DEPLOYMENT.md](./DEPLOYMENT.md) for the release and rollback procedure.
 
 GitHub Actions runs the test suite and typecheck before publishing the Docker image.

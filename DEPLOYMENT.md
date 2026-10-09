@@ -31,7 +31,7 @@ Current production image:
 ghcr.io/m00nhunter/mealie-calorie-estimator:referenced-recipe-nutrition
 ```
 
-It is built by `.github/workflows/docker-ghcr.yml` whenever `feature/referenced-recipe-nutrition` is pushed, and the workflow can also be started manually.
+It is built by `.github/workflows/docker-ghcr.yml` whenever `feature/referenced-recipe-nutrition` is pushed or a version tag such as `v1.14.0` is pushed. The workflow can also be started manually.
 
 ## Portainer
 
@@ -82,12 +82,27 @@ The production logs demonstrated recursive processing of:
 
 The parent recipe was successfully updated in Mealie.
 
-## Image tagging policy
+## Image tags and releases
 
-The current feature tag is intentionally easy to consume:
+Every build is published with these tags:
 
-```text
-referenced-recipe-nutrition
+| Tag | Meaning |
+|---|---|
+| `referenced-recipe-nutrition` | Moving tag, always the latest push to the feature branch. Built on branch pushes only |
+| `sha-<commit>` | Fixed tag of one commit, built on every push |
+| `1.14.0` | Fixed release version, built when a git tag `v1.14.0` is pushed |
+
+Production can follow the moving tag (always the newest) or be pinned to a fixed tag in the Portainer stack.
+
+### Creating a release
+
+```bash
+git tag v1.14.0
+git push origin v1.14.0
 ```
 
-For long-term reproducibility, future releases should also publish an immutable versioned tag, for example `1.13.0-referenced-recipe-nutrition`. Production can then be pinned to a specific release while the moving feature tag remains useful for development.
+GitHub Actions runs the tests and publishes `ghcr.io/m00nhunter/mealie-calorie-estimator:1.14.0`. Version numbers follow `MAJOR.MINOR.PATCH`: a new feature raises MINOR, a fix raises PATCH.
+
+### Rolling back
+
+Set the image in the Portainer stack to the previous fixed tag (a version such as `1.13.1` or a `sha-<commit>` tag) and use Pull and redeploy.

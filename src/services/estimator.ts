@@ -131,6 +131,7 @@ interface IngredientOutcome {
   nutrients: NutrientSet | null
   kcalContribution: number | null
   llmEstimated: boolean
+  gramsSource?: "database" | "llm"
 }
 
 async function evaluateIngredient(ing: MealieIngredient): Promise<IngredientOutcome | null> {
@@ -143,6 +144,7 @@ async function evaluateIngredient(ing: MealieIngredient): Promise<IngredientOutc
 
   let grams = convertToGrams(quantity, ing.unit)
   let llmEstimated = false
+  let gramsSource: "database" | "llm" | undefined
 
   if (grams === null) {
     const unitName = ing.unit?.name
@@ -150,6 +152,7 @@ async function evaluateIngredient(ing: MealieIngredient): Promise<IngredientOutc
       const databaseGrams = await lookupServingWeight(foodName, unitName)
       if (databaseGrams !== null) {
         grams = quantity * databaseGrams
+        gramsSource = "database"
         logger.debug({ foodName, unitName, gramsPerUnit: databaseGrams }, "Using OFF serving weight")
       }
     }
@@ -159,6 +162,7 @@ async function evaluateIngredient(ing: MealieIngredient): Promise<IngredientOutc
       if (llmGrams !== null) {
         grams = llmGrams
         llmEstimated = true
+        gramsSource = "llm"
       }
     }
   }
@@ -172,12 +176,12 @@ async function evaluateIngredient(ing: MealieIngredient): Promise<IngredientOutc
   if (!result.matched || result.nutrients === null) {
     const llmNutrients = await estimateNutrients(foodName)
     if (llmNutrients !== null) {
-      return { foodName, grams, quantityLabel: formatQuantity(quantity, ing.unit), nutrients: llmNutrients, kcalContribution: llmNutrients.kcalPer100g !== null ? llmNutrients.kcalPer100g * grams / 100 : null, llmEstimated: true }
+      return { foodName, grams, quantityLabel: formatQuantity(quantity, ing.unit), nutrients: llmNutrients, kcalContribution: llmNutrients.kcalPer100g !== null ? llmNutrients.kcalPer100g * grams / 100 : null, llmEstimated: true, gramsSource }
     }
-    return { foodName, grams, quantityLabel: formatQuantity(quantity, ing.unit), nutrients: null, kcalContribution: null, llmEstimated: false }
+    return { foodName, grams, quantityLabel: formatQuantity(quantity, ing.unit), nutrients: null, kcalContribution: null, llmEstimated: false, gramsSource }
   }
 
-  return { foodName, grams, quantityLabel: formatQuantity(quantity, ing.unit), nutrients: result.nutrients, kcalContribution: result.nutrients.kcalPer100g !== null ? result.nutrients.kcalPer100g * grams / 100 : null, llmEstimated }
+  return { foodName, grams, quantityLabel: formatQuantity(quantity, ing.unit), nutrients: result.nutrients, kcalContribution: result.nutrients.kcalPer100g !== null ? result.nutrients.kcalPer100g * grams / 100 : null, llmEstimated, gramsSource }
 }
 
 interface EstimateContext { stack: Set<string> }
@@ -233,7 +237,7 @@ export async function estimateRecipe(recipe: MealieRecipe, context: EstimateCont
       continue
     }
     totalNutrients = addToTotal(totalNutrients, ingredientOutcome.nutrients, ingredientOutcome.grams * factor)
-    matchedIngredients.push({ name: ingredientOutcome.foodName, grams: ingredientOutcome.grams, quantityLabel: withPercent(ingredientOutcome.quantityLabel, outcome.percent), kcalContribution: ingredientOutcome.kcalContribution === null ? null : ingredientOutcome.kcalContribution * factor, matched: true, nutrients: ingredientOutcome.nutrients, llmEstimated: ingredientOutcome.llmEstimated })
+    matchedIngredients.push({ name: ingredientOutcome.foodName, grams: ingredientOutcome.grams, quantityLabel: withPercent(ingredientOutcome.quantityLabel, outcome.percent), kcalContribution: ingredientOutcome.kcalContribution === null ? null : ingredientOutcome.kcalContribution * factor, matched: true, nutrients: ingredientOutcome.nutrients, llmEstimated: ingredientOutcome.llmEstimated, gramsSource: ingredientOutcome.gramsSource })
   }
 
   const servings = recipe.recipeServings ?? recipe.recipeYieldQuantity ?? 1
@@ -295,21 +299,32 @@ function formatKcal(value: number | null): string {
   return Math.round(value).toLocaleString("de-CH").replace(/’/g, "'")
 }
 
+const GRAMS_SOURCE_LABELS = { database: "Open Food Facts", llm: "LLM" } as const
+
+function formatGrams(ingredient: IngredientMatch): string {
+  if (ingredient.grams == null) return "—"
+  const grams = Math.round(ingredient.grams) + " g"
+  return ingredient.gramsSource ? grams + " (" + GRAMS_SOURCE_LABELS[ingredient.gramsSource] + ")" : grams
+}
+
+function escapeCell(text: string): string {
+  return text.replaceAll("|", "\\|")
+}
+
 export function buildNutritionCalculationNote(result: EstimateResult): RecipeNote {
-  const rows = result.matchedIngredients.map((ingredient) => ({
-    name: ingredient.name,
-    quantity: ingredient.quantityLabel ?? "",
-    kcal: formatKcal(ingredient.kcalContribution ?? null),
-  }))
-  const nameWidth = Math.max("Zutat".length, ...rows.map((r) => r.name.length))
-  const quantityWidth = Math.max("Menge".length, ...rows.map((r) => r.quantity.length))
-  const kcalWidth = Math.max("kcal".length, ...rows.map((r) => r.kcal.length), formatKcal(result.totalNutrients.kcalPer100g).length)
-  const separator = "-".repeat(nameWidth + quantityWidth + kcalWidth + 6)
-  const line = (name: string, quantity: string, kcal: string) => name.padEnd(nameWidth) + "  " + quantity.padEnd(quantityWidth) + "  " + kcal.padStart(kcalWidth)
-  const lines = ["```", line("Zutat", "Menge", "kcal"), separator, ...rows.map((row) => line(row.name, row.quantity, row.kcal)), separator, line("Gesamt", "", formatKcal(result.totalNutrients.kcalPer100g))]
-  if (result.servings != null && result.servings > 0) lines.push(line("Pro Portion", "(" + result.servings + ")", formatKcal(result.perServingNutrients.kcalPer100g)))
+  const row = (name: string, quantity: string, grams: string, kcal: string) =>
+    "| " + [escapeCell(name), escapeCell(quantity), grams, kcal].join(" | ") + " |"
+  const lines = [
+    "| Zutat | Menge | Gramm | kcal |",
+    "|---|---|---:|---:|",
+    ...result.matchedIngredients.map((ingredient) =>
+      row(ingredient.name, ingredient.quantityLabel ?? "", formatGrams(ingredient), formatKcal(ingredient.kcalContribution ?? null))),
+    row("**Gesamt**", "", "", "**" + formatKcal(result.totalNutrients.kcalPer100g) + "**"),
+  ]
+  if (result.servings != null && result.servings > 0) {
+    lines.push(row("**Pro Portion**", "(" + result.servings + ")", "", "**" + formatKcal(result.perServingNutrients.kcalPer100g) + "**"))
+  }
   if (result.unmatchedIngredients.length > 0) lines.push("", "Nicht berechnet: " + result.unmatchedIngredients.join(", "))
-  lines.push("```")
   return { title: NUTRITION_DETAILS_NOTE_TITLE, text: lines.join("\n") }
 }
 

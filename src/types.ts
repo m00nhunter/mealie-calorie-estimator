@@ -147,6 +147,7 @@ export interface IngredientMatch {
   matched: boolean
   nutrients: NutrientSet | null
   llmEstimated?: boolean
+  gramsSource?: "database" | "llm"
 }
 
 export interface EstimateResult {

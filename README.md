@@ -299,7 +299,7 @@ This fork adds recursive nutrition estimation for Mealie ingredients that refere
 
 ### Nutrition calculation details
 
-- The recipe notes get a "Nutrition calculation details" entry listing the matched product, amount and calories per ingredient. It is replaced on every estimation, other notes stay untouched.
+- The recipe notes get a "Nutrition calculation details" entry as a Markdown table with quantity, weight in grams and calories per ingredient. Weights that were not given in grams are marked with their source (`Open Food Facts` = serving size from Open Food Facts, `LLM` = estimated by the LLM). It is replaced on every estimation, other notes stay untouched.
 - Open Food Facts results are ranked: exact name matches and products with calories are preferred, processed forms (e.g. powder, sauce) are penalized.
 - For piece units (e.g. "Stück") the search prefers fresh products by adding "frisch" to the query.
 

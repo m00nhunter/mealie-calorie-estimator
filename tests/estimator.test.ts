@@ -334,7 +334,24 @@ describe("nutrition calculation details", () => {
     expect(note.text).toContain("5'673")
     expect(note.text).toContain("Pro Portion")
     expect(note.text).toContain("1'418")
-    expect(note.text).toContain("```")
+    expect(note.text).toContain("| Zutat | Menge | Gramm | kcal |")
+    expect(note.text).toContain("| Schweinebauch | 600 g | 600 g | 720 |")
+    expect(note.text).not.toContain("```")
+  })
+
+  it("shows where an estimated weight comes from and escapes pipes", () => {
+    const result: EstimateResult = {
+      slug: "test", servings: 1, totalNutrients: n(300), perServingNutrients: n(300),
+      matchedCount: 2, unmatchedCount: 0, unmatchedIngredients: ["Wasser"],
+      matchedIngredients: [
+        { name: "Pouletschenkel", grams: 300.4, quantityLabel: "2 Stück", kcalContribution: 200, matched: true, nutrients: n(66), gramsSource: "llm" },
+        { name: "A|B", grams: 50, quantityLabel: "1 Stück", kcalContribution: 100, matched: true, nutrients: n(200), gramsSource: "database" },
+      ],
+    }
+    const note = buildNutritionCalculationNote(result)
+    expect(note.text).toContain("| Pouletschenkel | 2 Stück | 300 g (LLM) | 200 |")
+    expect(note.text).toContain("| A\\|B | 1 Stück | 50 g (Open Food Facts) | 100 |")
+    expect(note.text).toContain("Nicht berechnet: Wasser")
   })
 
   it("replaces only the estimator note and preserves existing notes", () => {

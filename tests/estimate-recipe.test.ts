@@ -90,7 +90,7 @@ describe("estimateRecipe", () => {
   it("uses an explicit OFF serving weight before the LLM for piece units", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const query = queryOf(input)
-      if (query === "Eier") {
+      if (query === "Eier" || query === "Eier frisch") {
         return new Response(JSON.stringify({
           hits: [{
             product_name: "Œufs frais BIO",

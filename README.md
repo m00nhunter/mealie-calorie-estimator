@@ -303,6 +303,16 @@ This fork adds recursive nutrition estimation for Mealie ingredients that refere
 - Open Food Facts results are ranked: exact name matches and products with calories are preferred, processed forms (e.g. powder, sauce) are penalized.
 - For piece units (e.g. "Stück") the search prefers fresh products by adding "frisch" to the query.
 
+### Edible share of an ingredient
+
+Some ingredients are only partly eaten, e.g. bones in a stock or a marinade that is poured away. Put a percentage in square brackets into the ingredient's note field in Mealie to count only that share:
+
+- `[30%]` counts 30 % of the ingredient (`am besten Spitzbein [30%]` works too, other text in the note is ignored)
+- `[0%]` or `nicht mitrechnen` leaves the ingredient out completely
+- Ingredients without a marker are counted in full
+
+The marker works for normal ingredients and for linked recipes. The share is listed in the "Nutrition calculation details" note and is part of the ingredient hash, so changing it triggers a new estimation.
+
 ### Fork documentation
 
 - [UPSTREAM.md](./UPSTREAM.md) — upstream relationship and synchronization workflow

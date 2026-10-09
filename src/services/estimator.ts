@@ -8,6 +8,7 @@ import { convertToGrams } from "./unit-converter.js"
 import { lookupNutrients, lookupServingWeight } from "./off-client.js"
 import { estimateGrams, estimateNutrients } from "./llm-estimator.js"
 import { logger } from "../utils/logger.js"
+import { parseEdiblePercent } from "./edible-share.js"
 
 export function computeIngredientHash(recipe: MealieRecipe, stack: ReadonlySet<string> = new Set([recipe.slug])): string {
   const parts: string[] = []
@@ -24,7 +25,9 @@ export function computeIngredientHash(recipe: MealieRecipe, stack: ReadonlySet<s
         : computeIngredientHash(referenced, new Set([...stack, referenced.slug]))
       referencedPart = `${referenced.slug}#${nested}`
     }
-    parts.push(`${qty}|${unitName}|${foodName}|${referencedPart}`)
+    const percent = parseEdiblePercent(ing.note)
+    const percentPart = percent === null ? "" : `|edible:${percent}`
+    parts.push(`${qty}|${unitName}|${foodName}|${referencedPart}${percentPart}`)
   }
 
   parts.sort()
@@ -116,6 +119,11 @@ function formatQuantity(quantity: number, unit: MealieIngredient["unit"]): strin
   return unitName ? quantityText + " " + unitName : quantityText
 }
 
+function withPercent(label: string, percent: number | null): string {
+  if (percent === null) return label
+  return label ? `${label} [${percent}%]` : `[${percent}%]`
+}
+
 interface IngredientOutcome {
   foodName: string
   grams: number | null
@@ -189,19 +197,30 @@ export async function estimateRecipe(recipe: MealieRecipe, context: EstimateCont
   let totalNutrients = emptyNutrients()
 
   const outcomes = await Promise.all(recipe.recipeIngredient.map(async (ing) => {
-    if (ing.referencedRecipe) return { kind: "recipe" as const, ingredient: ing, result: await evaluateReferencedRecipe(ing, context) }
-    return { kind: "food" as const, result: await evaluateIngredient(ing) }
+    const percent = parseEdiblePercent(ing.note)
+    if (percent === 0) return { kind: "skipped" as const, ingredient: ing, percent }
+    if (ing.referencedRecipe) return { kind: "recipe" as const, ingredient: ing, percent, result: await evaluateReferencedRecipe(ing, context) }
+    return { kind: "food" as const, percent, result: await evaluateIngredient(ing) }
   }))
 
   for (const outcome of outcomes) {
+    const factor = outcome.percent === null ? 1 : outcome.percent / 100
+    if (outcome.kind === "skipped") {
+      const ing = outcome.ingredient
+      const name = ing.food?.name ?? ing.referencedRecipe?.name ?? ing.referencedRecipe?.slug ?? ing.display ?? "Zutat"
+      const quantityLabel = ing.quantity != null ? formatQuantity(ing.quantity, ing.unit) : ""
+      matchedIngredients.push({ name, grams: null, quantityLabel: withPercent(quantityLabel, 0), kcalContribution: 0, matched: true, nutrients: null })
+      continue
+    }
     if (outcome.kind === "recipe") {
       const name = outcome.result?.name ?? outcome.ingredient.referencedRecipe?.name ?? outcome.ingredient.referencedRecipe?.slug ?? "Referenced recipe"
       if (outcome.result === null) {
         unmatchedNames.push(name)
         matchedIngredients.push({ name, grams: null, quantityLabel: outcome.ingredient.quantity != null ? formatQuantity(outcome.ingredient.quantity, outcome.ingredient.unit) : "", kcalContribution: null, matched: false, nutrients: null })
       } else {
-        totalNutrients = addNutrients(totalNutrients, outcome.result.nutrients)
-        matchedIngredients.push({ name, grams: null, quantityLabel: outcome.result.quantityLabel, kcalContribution: outcome.result.nutrients.kcalPer100g, matched: true, nutrients: outcome.result.nutrients })
+        const scaled = scaleNutrients(outcome.result.nutrients, factor)
+        totalNutrients = addNutrients(totalNutrients, scaled)
+        matchedIngredients.push({ name, grams: null, quantityLabel: withPercent(outcome.result.quantityLabel, outcome.percent), kcalContribution: scaled.kcalPer100g, matched: true, nutrients: scaled })
       }
       continue
     }
@@ -213,8 +232,8 @@ export async function estimateRecipe(recipe: MealieRecipe, context: EstimateCont
       matchedIngredients.push({ name: ingredientOutcome.foodName, grams: ingredientOutcome.grams, quantityLabel: ingredientOutcome.quantityLabel, kcalContribution: null, matched: false, nutrients: null })
       continue
     }
-    totalNutrients = addToTotal(totalNutrients, ingredientOutcome.nutrients, ingredientOutcome.grams)
-    matchedIngredients.push({ name: ingredientOutcome.foodName, grams: ingredientOutcome.grams, quantityLabel: ingredientOutcome.quantityLabel, kcalContribution: ingredientOutcome.kcalContribution, matched: true, nutrients: ingredientOutcome.nutrients, llmEstimated: ingredientOutcome.llmEstimated })
+    totalNutrients = addToTotal(totalNutrients, ingredientOutcome.nutrients, ingredientOutcome.grams * factor)
+    matchedIngredients.push({ name: ingredientOutcome.foodName, grams: ingredientOutcome.grams, quantityLabel: withPercent(ingredientOutcome.quantityLabel, outcome.percent), kcalContribution: ingredientOutcome.kcalContribution === null ? null : ingredientOutcome.kcalContribution * factor, matched: true, nutrients: ingredientOutcome.nutrients, llmEstimated: ingredientOutcome.llmEstimated })
   }
 
   const servings = recipe.recipeServings ?? recipe.recipeYieldQuantity ?? 1

@@ -56,13 +56,16 @@ function withoutProgressNote(notes: RecipeNote[] | null | undefined): RecipeNote
   return (notes ?? []).filter((note) => note.title !== PROGRESS_NOTE_TITLE)
 }
 
+const DEFAULT_INTERVAL_MS = 10_000
+const MIN_INTERVAL_MS = 500
+
 export function createProgressReporter(recipe: MealieRecipe, householdId?: string | null): ProgressReporter {
   if (!config.progress.enabled) {
     return { tracker: undefined, stop: async () => {}, abort: async () => {} }
   }
 
+  const intervalMs = config.progress.intervalMs >= MIN_INTERVAL_MS ? config.progress.intervalMs : DEFAULT_INTERVAL_MS
   const startedAt = Date.now()
-  let lastWrite = startedAt
   let stopped = false
   let writing = false
   let written = false
@@ -73,21 +76,26 @@ export function createProgressReporter(recipe: MealieRecipe, householdId?: strin
     done: 0,
     step() {
       tracker.done++
-      if (stopped || writing) return
-      const now = Date.now()
-      if (now - lastWrite < config.progress.intervalMs) return
-      lastWrite = now
-      writing = true
-      written = true
-      const note = buildProgressNote(tracker.done, tracker.total, now - startedAt)
-      inFlight = patchRecipe(recipe.slug, { notes: [...withoutProgressNote(recipe.notes), note] }, householdId)
-        .catch((err) => logger.warn({ slug: recipe.slug, err }, "Could not write progress note"))
-        .finally(() => { writing = false })
     },
   }
 
+  const write = () => {
+    if (stopped || writing) return
+    writing = true
+    written = true
+    const note = buildProgressNote(tracker.done, tracker.total, Date.now() - startedAt)
+    logger.debug({ slug: recipe.slug, done: tracker.done, total: tracker.total }, "Writing progress note")
+    inFlight = patchRecipe(recipe.slug, { notes: [...withoutProgressNote(recipe.notes), note] }, householdId)
+      .catch((err) => logger.warn({ slug: recipe.slug, err }, "Could not write progress note"))
+      .finally(() => { writing = false })
+  }
+
+  const timer = setInterval(write, intervalMs)
+  ;(timer as { unref?: () => void }).unref?.()
+
   const stop = async () => {
     stopped = true
+    clearInterval(timer)
     await inFlight
   }
 

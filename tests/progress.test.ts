@@ -98,28 +98,40 @@ describe("createProgressReporter", () => {
     expect(patch).not.toHaveBeenCalled()
   })
 
-  it("writes a throttled progress note and keeps other notes", async () => {
+  it("writes a progress note after the interval even if no ingredient is done yet", async () => {
     const patch = patchMock
     const reporter = createProgressReporter(
       recipe("slow", [ingredient("A"), ingredient("B"), ingredient("C"), ingredient("D")], [{ title: "Mine", text: "keep" }]),
     )
 
-    vi.advanceTimersByTime(11_000)
-    reporter.tracker?.step()
-    reporter.tracker?.step()
+    await vi.advanceTimersByTimeAsync(11_000)
     await reporter.stop()
 
     expect(patch).toHaveBeenCalledTimes(1)
     const notes = patch.mock.calls[0][1].notes ?? []
     expect(notes.map((n) => n.title)).toEqual(["Mine", PROGRESS_NOTE_TITLE])
-    expect(notes[1].text).toContain("1 von 4 Zutaten")
+    expect(notes[1].text).toContain("0 von 4 Zutaten")
+  })
+
+  it("updates the counts on every interval", async () => {
+    const patch = patchMock
+    const reporter = createProgressReporter(recipe("slow", [ingredient("A"), ingredient("B"), ingredient("C"), ingredient("D")]))
+
+    await vi.advanceTimersByTimeAsync(10_000)
+    reporter.tracker?.step()
+    reporter.tracker?.step()
+    await vi.advanceTimersByTimeAsync(10_000)
+    await reporter.stop()
+
+    expect(patch).toHaveBeenCalledTimes(2)
+    expect((patch.mock.calls[1][1].notes ?? [])[0].text).toContain("2 von 4 Zutaten")
   })
 
   it("does not write after stop", async () => {
     const patch = patchMock
     const reporter = createProgressReporter(recipe("late", [ingredient("A"), ingredient("B")]))
     await reporter.stop()
-    vi.advanceTimersByTime(20_000)
+    await vi.advanceTimersByTimeAsync(20_000)
     reporter.tracker?.step()
     expect(patch).not.toHaveBeenCalled()
   })
@@ -127,7 +139,7 @@ describe("createProgressReporter", () => {
   it("removes the progress note again when aborted after a write", async () => {
     const patch = patchMock
     const reporter = createProgressReporter(recipe("fail", [ingredient("A"), ingredient("B")], [{ title: "Mine", text: "keep" }]))
-    vi.advanceTimersByTime(11_000)
+    await vi.advanceTimersByTimeAsync(11_000)
     reporter.tracker?.step()
     await reporter.abort()
     expect(patch).toHaveBeenCalledTimes(2)
@@ -142,7 +154,7 @@ describe("createProgressReporter", () => {
   it("survives a failing patch", async () => {
     patchMock.mockRejectedValue(new Error("down"))
     const reporter = createProgressReporter(recipe("err", [ingredient("A"), ingredient("B")]))
-    vi.advanceTimersByTime(11_000)
+    await vi.advanceTimersByTimeAsync(11_000)
     reporter.tracker?.step()
     await expect(reporter.stop()).resolves.toBeUndefined()
   })

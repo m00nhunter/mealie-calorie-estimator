@@ -207,6 +207,7 @@ async function evaluateReferencedRecipe(ing: MealieIngredient, context: Estimate
 }
 
 export async function estimateRecipe(recipe: MealieRecipe, context: EstimateContext = { stack: new Set([recipe.slug]) }): Promise<EstimateResult> {
+  const startedAt = Date.now()
   const matchedIngredients: IngredientMatch[] = []
   const unmatchedNames: string[] = []
   let totalNutrients = emptyNutrients()
@@ -278,6 +279,7 @@ export async function estimateRecipe(recipe: MealieRecipe, context: EstimateCont
       kcalPerServing: perServingNutrients.kcalPer100g,
       matched: result.matchedCount,
       unmatched: result.unmatchedCount,
+      durationMs: Date.now() - startedAt,
     },
     "Estimated nutrition for recipe",
   )

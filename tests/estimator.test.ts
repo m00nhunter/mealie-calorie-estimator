@@ -107,6 +107,18 @@ describe("computeIngredientHash", () => {
     expect(computeIngredientHash(a)).not.toBe(computeIngredientHash(b))
   })
 
+  it("produces different hash when the weight in the food description changes", () => {
+    const withWeight = (description: string) => makeRecipe({
+      recipeIngredient: [{
+        quantity: 2, unit: { id: "1", name: "Stück", pluralName: null, abbreviation: "", standardQuantity: null, standardUnit: null },
+        food: { id: "1", name: "Ei", pluralName: null, aliases: [], description },
+        note: null, display: "2 Stück Ei", title: null, original_text: null,
+      }],
+    })
+    expect(computeIngredientHash(withWeight("[Stück=50g]"))).not.toBe(computeIngredientHash(withWeight("[Stück=60g]")))
+    expect(computeIngredientHash(withWeight("[Stück=50g]"))).toBe(computeIngredientHash(withWeight("[Stück=50g] anderer Text")))
+  })
+
   it("handles null fields", () => {
     const recipe = makeRecipe({
       recipeIngredient: [

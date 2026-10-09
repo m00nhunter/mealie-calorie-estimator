@@ -9,9 +9,10 @@ import { lookupNutrients, lookupServingWeight } from "./off-client.js"
 import { estimateGrams, estimateNutrients } from "./llm-estimator.js"
 import { logger } from "../utils/logger.js"
 import { parseEdiblePercent, ingredientNoteHint } from "./edible-share.js"
+import { gramsPerUnitFromDescription } from "./food-weight.js"
 import { PROGRESS_NOTE_TITLE, type ProgressTracker } from "./progress.js"
 
-export const CALCULATION_VERSION = 2
+export const CALCULATION_VERSION = 3
 
 function standardUnitPart(ing: MealieIngredient): string {
   const unit = ing.unit
@@ -37,7 +38,9 @@ export function computeIngredientHash(recipe: MealieRecipe, stack: ReadonlySet<s
     const percentPart = percent === null ? "" : `|edible:${percent}`
     const hint = ingredientNoteHint(ing.note)
     const hintPart = hint ? `|note:${hint}` : ""
-    parts.push(`${qty}|${unitName}|${foodName}|${referencedPart}${percentPart}${hintPart}${standardUnitPart(ing)}`)
+    const foodGrams = gramsPerUnitFromDescription(ing.food?.description, ing.unit?.name)
+    const foodGramsPart = foodGrams === null ? "" : `|food:${foodGrams}`
+    parts.push(`${qty}|${unitName}|${foodName}|${referencedPart}${percentPart}${hintPart}${standardUnitPart(ing)}${foodGramsPart}`)
   }
 
   parts.sort()
@@ -142,7 +145,7 @@ interface IngredientOutcome {
   nutrients: NutrientSet | null
   kcalContribution: number | null
   llmEstimated: boolean
-  gramsSource?: "database" | "llm"
+  gramsSource?: "database" | "llm" | "food"
 }
 
 async function evaluateIngredient(ing: MealieIngredient): Promise<IngredientOutcome | null> {
@@ -153,9 +156,10 @@ async function evaluateIngredient(ing: MealieIngredient): Promise<IngredientOutc
     return null
   }
 
-  let grams = convertToGrams(quantity, ing.unit)
+  const foodGramsPerUnit = gramsPerUnitFromDescription(ing.food?.description, ing.unit?.name)
+  let grams = foodGramsPerUnit !== null ? foodGramsPerUnit * quantity : convertToGrams(quantity, ing.unit)
   let llmEstimated = false
-  let gramsSource: "database" | "llm" | undefined
+  let gramsSource: "database" | "llm" | "food" | undefined = foodGramsPerUnit !== null ? "food" : undefined
 
   if (grams === null) {
     const unitName = ing.unit?.name
@@ -317,7 +321,7 @@ function formatKcal(value: number | null): string {
   return Math.round(value).toLocaleString("de-CH").replace(/’/g, "'")
 }
 
-const GRAMS_SOURCE_LABELS = { database: "Open Food Facts", llm: "LLM" } as const
+const GRAMS_SOURCE_LABELS = { database: "Open Food Facts", llm: "LLM", food: "Zutat" } as const
 
 function formatGrams(ingredient: IngredientMatch): string {
   if (ingredient.grams == null) return "—"

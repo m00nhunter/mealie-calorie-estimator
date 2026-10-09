@@ -305,7 +305,7 @@ A recipe is only estimated again when its ingredient hash changes. The hash cove
 
 ### Nutrition calculation details
 
-- The recipe notes get a "Nutrition calculation details" entry as a Markdown table with quantity, weight in grams and calories per ingredient. Weights that were not given in grams are marked with their source (`Open Food Facts` = serving size from Open Food Facts, `LLM` = estimated by the LLM). It is replaced on every estimation, other notes stay untouched.
+- The recipe notes get a "Nutrition calculation details" entry as a Markdown table with quantity, weight in grams and calories per ingredient. Weights that were not given in grams are marked with their source (`Zutat` = weight from the food description, `Open Food Facts` = serving size from Open Food Facts, `LLM` = estimated by the LLM). It is replaced on every estimation, other notes stay untouched.
 - Open Food Facts results are ranked: exact name matches and products with calories are preferred, processed forms (e.g. powder, sauce) are penalized.
 - For piece units (e.g. "Stück") the search prefers fresh products by adding "frisch" to the query.
 
@@ -318,6 +318,19 @@ Some ingredients are only partly eaten, e.g. bones in a stock or a marinade that
 - Ingredients without a marker are counted in full
 
 The marker works for normal ingredients and for linked recipes. The share is listed in the "Nutrition calculation details" note and is part of the ingredient hash, so changing it triggers a new estimation.
+
+### Weights in the Mealie food description
+
+Piece units like "Stück" or "Bund" have no fixed weight. You can store it with the food in Mealie (Settings → Data Management → Foods → description) so it is maintained in one place:
+
+```text
+[Stück=55g] [Bund=30g] [Esslöffel=13g]
+```
+
+- The entry whose name matches the unit used in the ingredient is taken (case and umlauts do not matter, `Stk` and `Stueck` count as `Stück`). Other text in the description is ignored.
+- Allowed are `g`, `kg` and decimals with a comma or dot, e.g. `[Stück=1,5kg]`.
+- Order of the weight sources: food description, unit standard values from Mealie, Open Food Facts serving size, LLM. The "Nutrition calculation details" table marks the first case as `(Zutat)`.
+- Changing the description changes the ingredient hash, so the recipe is estimated again the next time it is saved.
 
 ### Ingredient notes and weight estimates
 

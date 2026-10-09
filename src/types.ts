@@ -24,6 +24,7 @@ export interface MealieFood {
   name: string
   pluralName: string | null
   aliases: string[]
+  description?: string | null
 }
 
 export interface RecipeNote {
@@ -147,7 +148,7 @@ export interface IngredientMatch {
   matched: boolean
   nutrients: NutrientSet | null
   llmEstimated?: boolean
-  gramsSource?: "database" | "llm"
+  gramsSource?: "database" | "llm" | "food"
 }
 
 export interface EstimateResult {

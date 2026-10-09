@@ -11,7 +11,7 @@ export async function estimateGrams(quantity: number, unitName: string, foodName
     return null
   }
 
-  const cacheKey = hint ? `${foodName} (${hint})` : foodName
+  const cacheKey = hint ? `v2|${foodName} (${hint})` : `v2|${foodName}`
   const hintText = hint ? ` The recipe adds this note: "${hint}". Take it into account, for example size or preparation.` : ""
 
   const cached = getCachedLlmEstimate(unitName, cacheKey)

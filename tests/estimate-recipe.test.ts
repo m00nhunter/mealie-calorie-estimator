@@ -126,6 +126,33 @@ describe("estimateRecipe", () => {
     expect(result.perServingNutrients.kcalPer100g).toBe(86)
   })
 
+  it("uses the weight from the food description before OFF and LLM", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const query = queryOf(input)
+      if (query === "Eier" || query === "Eier frisch") {
+        return new Response(JSON.stringify({
+          hits: [{ product_name: "Eier", serving_quantity: 60, serving_quantity_unit: "g", nutriments: { "energy-kcal_100g": 143 } }],
+        }), { status: 200, headers: { "content-type": "application/json" } })
+      }
+      return emptyHitsResponse()
+    })
+
+    const result = await estimateRecipe(makeRecipe([{
+      quantity: 4,
+      unit: { id: "u-piece", name: "Stück", pluralName: "Stücke", abbreviation: "Stk.", standardQuantity: null, standardUnit: null },
+      food: { id: "eier", name: "Eier", pluralName: null, aliases: [], description: "Hühnerei [Stück=50g]" },
+      note: null,
+      display: "4 Stück Eier",
+      title: null,
+      original_text: null,
+    }]))
+
+    expect(fetchMock).toHaveBeenCalled()
+    expect(result.matchedIngredients[0].grams).toBe(200)
+    expect(result.matchedIngredients[0].gramsSource).toBe("food")
+    expect(result.matchedIngredients[0].llmEstimated).toBe(false)
+  })
+
   it("matches ingredients concurrently and aggregates nutrients in order", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const query = queryOf(input)

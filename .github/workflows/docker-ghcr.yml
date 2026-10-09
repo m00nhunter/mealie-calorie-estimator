@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feature/referenced-recipe-nutrition
+      - feature/nutrition-calculation-details
   workflow_dispatch:
 
 env:
@@ -33,6 +34,7 @@ jobs:
         run: npm run typecheck
 
   build-and-push:
+    if: github.ref == 'refs/heads/feature/referenced-recipe-nutrition'
     needs: test
     runs-on: ubuntu-latest
     permissions:

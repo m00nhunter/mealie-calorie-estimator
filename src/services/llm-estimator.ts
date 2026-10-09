@@ -18,7 +18,11 @@ export async function estimateGrams(quantity: number, unitName: string, foodName
     return totalGrams
   }
 
-  const prompt = `Estimate the weight in grams for 1 ${unitName} of ${foodName}. Consider typical packaging sizes and food densities. Return ONLY a single number (the weight in grams). No explanation, no unit, no punctuation. If you cannot estimate, return 0.`
+  const normalizedUnit = unitName.trim().toLowerCase()
+  const isPieceUnit = ["stück", "stuck", "piece", "pieces"].includes(normalizedUnit)
+  const prompt = isPieceUnit
+    ? `Estimate the typical edible weight in grams for ONE individual ${foodName}. Interpret this as one single edible item, not a package, serving, bunch, container, or multiple pieces. Return ONLY a single integer number representing the weight in grams of ONE individual item. No explanation, no unit, no punctuation. If you cannot estimate, return 0.`
+    : `Estimate the weight in grams for 1 ${unitName} of ${foodName}. Do not interpret the unit as a package or container unless the unit explicitly means that. Return ONLY a single number (the weight in grams). No explanation, no unit, no punctuation. If you cannot estimate, return 0.`
 
   try {
     await waitForRateLimit(RateLimitType.Llm)

@@ -16,6 +16,9 @@ const OFF_NUTRIENT_FIELDS = [
   "serving_quantity",
   "serving_quantity_unit",
   "nutriments",
+  "categories",
+  "labels",
+  "ingredients_text",
 ].join(",")
 
 const NON_ITEM_SERVING_UNITS = new Set([
@@ -28,7 +31,7 @@ const NON_ITEM_SERVING_UNITS = new Set([
 function normalizeServingToken(value: string): string {
   return value
     .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[̀-ͯ]/g, "")
     .toLowerCase()
     .trim()
 }
@@ -92,6 +95,14 @@ function parseServingWeightPerUnit(product: OffProduct, unitName: string): numbe
 
 const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504])
 
+const FORM_PENALTY_TERMS = [
+  "getrocknet", "getrocknete", "dried", "seche", "séché",
+  "pulver", "powder", "granulat", "extract", "extrakt",
+  "konzentrat", "konzentrierte", "sirup", "syrup",
+]
+
+const FRESH_TERMS = ["frisch", "fresh", "frais", "fresca", "raw", "roh"]
+
 async function fetchWithRetry(url: string, query: string): Promise<Response | null> {
   const { maxRetries, retryBackoffMs, userAgent } = config.openFoodFacts
   let lastResponse: Response | null = null
@@ -105,9 +116,7 @@ async function fetchWithRetry(url: string, query: string): Promise<Response | nu
 
     try {
       const res = await fetch(url, { headers: { "User-Agent": userAgent } })
-      if (res.ok || !RETRYABLE_STATUS.has(res.status)) {
-        return res
-      }
+      if (res.ok || !RETRYABLE_STATUS.has(res.status)) return res
       lastResponse = res
       logger.debug({ query, attempt, status: res.status }, "OFF search returned retryable status")
     } catch (err) {
@@ -119,31 +128,45 @@ async function fetchWithRetry(url: string, query: string): Promise<Response | nu
   return lastResponse
 }
 
-function extractNutrients(n: OffNutriments): NutrientSet {
-  const fat = n["fat_100g"] ?? null
-  const saturated = n["saturated-fat_100g"] ?? null
-  const trans = n["trans-fat_100g"] ?? null
+function normalize(value: string | null | undefined): string {
+  return (value ?? "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/ß/g, "ss")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+}
 
-  let unsaturated: number | null = null
-  if (fat !== null) {
-    const s = saturated ?? 0
-    const t = trans ?? 0
-    unsaturated = Math.round((fat - s - t) * 10) / 10
+function searchTokens(value: string): string[] {
+  return normalize(value).split(/\s+/).filter((token) => token.length >= 3)
+}
+
+function candidateText(product: OffProduct): string {
+  return [product.product_name, product.categories, product.labels, product.ingredients_text]
+    .filter((value): value is string => Boolean(value))
+    .join(" ")
+}
+
+function scoreProduct(product: OffProduct, query: string, preferFresh: boolean): number {
+  const name = normalize(product.product_name ?? "")
+  const text = normalize(candidateText(product))
+  const queryNormalized = normalize(query)
+  const queryTokens = searchTokens(query)
+  let score = 0
+
+  if (name === queryNormalized) score += 100
+  if (name.includes(queryNormalized) || queryNormalized.includes(name)) score += 50
+
+  for (const token of queryTokens) {
+    if (name.split(" ").includes(token)) score += 20
+    else if (text.includes(token)) score += 8
   }
 
-  return {
-    kcalPer100g: n["energy-kcal_100g"] ?? null,
-    proteinPer100g: n["proteins_100g"] ?? null,
-    carbsPer100g: n["carbohydrates_100g"] ?? null,
-    fatPer100g: fat,
-    saturatedFatPer100g: saturated,
-    transFatPer100g: trans,
-    unsaturatedFatPer100g: unsaturated,
-    fiberPer100g: n["fiber_100g"] ?? null,
-    sugarPer100g: n["sugars_100g"] ?? null,
-    sodiumPer100g: n["sodium_100g"] ?? null,
-    cholesterolPer100g: n["cholesterol_100g"] ?? null,
-  }
+  if (FRESH_TERMS.some((term) => text.includes(term))) score += preferFresh ? 35 : 10
+  if (FORM_PENALTY_TERMS.some((term) => text.includes(term))) score -= preferFresh ? 80 : 40
+
+  return score
 }
 
 async function searchProducts(query: string, pageSize = 1): Promise<OffProduct[]> {
@@ -185,9 +208,61 @@ async function searchProducts(query: string, pageSize = 1): Promise<OffProduct[]
   return data.hits
 }
 
-async function searchProduct(query: string): Promise<OffProduct | null> {
-  const products = await searchProducts(query, 1)
-  return products[0] ?? null
+async function searchProduct(query: string, preferFresh = false): Promise<OffProduct | null> {
+  const searchQuery = preferFresh && !FORM_PENALTY_TERMS.some((term) => normalize(query).includes(term))
+    ? `${query} frisch`
+    : query
+
+  const hits = await searchProducts(searchQuery, 10)
+  if (hits.length === 0) return null
+
+  const ranked = [...hits].sort(
+    (a, b) => scoreProduct(b, searchQuery, preferFresh) - scoreProduct(a, searchQuery, preferFresh),
+  )
+  const bestScore = scoreProduct(ranked[0], searchQuery, preferFresh)
+  const maxKcalScoreDelta = 20
+  const selected =
+    ranked.find(
+      (product) =>
+        product.nutriments?.["energy-kcal_100g"] != null &&
+        bestScore - scoreProduct(product, searchQuery, preferFresh) <= maxKcalScoreDelta,
+    ) ?? null
+
+  if (!selected) {
+    logger.debug(
+      {
+        query: searchQuery,
+        preferFresh,
+        candidates: ranked.slice(0, 5).map((product) => ({
+          name: product.product_name ?? null,
+          score: scoreProduct(product, searchQuery, preferFresh),
+          kcalPer100g: product.nutriments?.["energy-kcal_100g"] ?? null,
+        })),
+      },
+      "No ranked OFF candidate has kcal data",
+    )
+    return null
+  }
+
+  const selectedName = selected.product_name ?? null
+
+  logger.debug(
+    {
+      query: searchQuery,
+      preferFresh,
+      selected: selectedName,
+      score: scoreProduct(selected, searchQuery, preferFresh),
+      scoreDelta: bestScore - scoreProduct(selected, searchQuery, preferFresh),
+      candidates: ranked.slice(0, 5).map((product) => ({
+        name: product.product_name ?? null,
+        score: scoreProduct(product, searchQuery, preferFresh),
+        kcalPer100g: product.nutriments?.["energy-kcal_100g"] ?? null,
+      })),
+    },
+    "Selected OFF match from ranked candidates",
+  )
+
+  return selected
 }
 
 export async function lookupServingWeight(foodName: string, unitName: string): Promise<number | null> {
@@ -220,26 +295,57 @@ export async function lookupNutrients(foodName: string, unitName?: string): Prom
     searchTerm = searchTerm.slice(unitName.length).trim()
   }
 
-  const product = await searchProduct(searchTerm)
+  const normalizedUnit = unitName?.trim().toLowerCase()
+  const isPieceUnit = normalizedUnit === "stück" || normalizedUnit === "stuck" ||
+    normalizedUnit === "piece" || normalizedUnit === "pieces"
+  const hasExplicitForm = FORM_PENALTY_TERMS.some((term) => normalize(searchTerm).includes(term))
+  const preferFresh = isPieceUnit && !hasExplicitForm
+
+  const product = await searchProduct(searchTerm, preferFresh)
 
   if (!product) {
     logger.debug({ foodName }, "No OFF match found")
     return { nutrients: null, matched: false, productName: null }
   }
-
   if (!product.nutriments) {
-    logger.debug({ foodName, product: product.product_name }, "OFF match has no nutrient data")
-    return { nutrients: null, matched: false, productName: product.product_name }
+    logger.debug({ foodName, product: product.product_name ?? null }, "OFF match has no nutrient data")
+    return { nutrients: null, matched: false, productName: product.product_name ?? null }
   }
 
   const nutrients = extractNutrients(product.nutriments)
-
   if (nutrients.kcalPer100g === null) {
-    logger.debug({ foodName, product: product.product_name }, "OFF match has no kcal data")
-    return { nutrients: null, matched: false, productName: product.product_name }
+    logger.debug({ foodName, product: product.product_name ?? null }, "OFF match has no kcal data")
+    return { nutrients: null, matched: false, productName: product.product_name ?? null }
   }
 
-  logger.debug({ foodName, product: product.product_name }, "OFF match found")
+  logger.debug({ foodName, product: product.product_name ?? null }, "OFF match found")
   setCachedNutrients(foodName, nutrients)
-  return { nutrients, matched: true, productName: product.product_name }
+  return { nutrients, matched: true, productName: product.product_name ?? null }
+}
+
+function extractNutrients(n: OffNutriments): NutrientSet {
+  const fat = n["fat_100g"] ?? null
+  const saturated = n["saturated-fat_100g"] ?? null
+  const trans = n["trans-fat_100g"] ?? null
+
+  let unsaturated: number | null = null
+  if (fat !== null) {
+    const s = saturated ?? 0
+    const t = trans ?? 0
+    unsaturated = Math.round((fat - s - t) * 10) / 10
+  }
+
+  return {
+    kcalPer100g: n["energy-kcal_100g"] ?? null,
+    proteinPer100g: n["proteins_100g"] ?? null,
+    carbsPer100g: n["carbohydrates_100g"] ?? null,
+    fatPer100g: fat,
+    saturatedFatPer100g: saturated,
+    transFatPer100g: trans,
+    unsaturatedFatPer100g: unsaturated,
+    fiberPer100g: n["fiber_100g"] ?? null,
+    sugarPer100g: n["sugars_100g"] ?? null,
+    sodiumPer100g: n["sodium_100g"] ?? null,
+    cholesterolPer100g: n["cholesterol_100g"] ?? null,
+  }
 }

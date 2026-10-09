@@ -112,7 +112,7 @@ It's recommended to install it next to your Mealie instance using docker-compose
 | `OFF_BASE_URL` | `https://world.openfoodfacts.org` | Open Food Facts base URL |
 | `OFF_MAX_RETRIES` | `3` | Retries for transient OFF search errors (429/5xx) |
 | `OFF_RETRY_BACKOFF_MS` | `500` | Base backoff between retries (doubles each attempt) |
-| `OFF_TIMEOUT_MS` | `20000` | Timeout per Open Food Facts request. A timed-out request counts as a failed attempt and is retried |
+| `OFF_TIMEOUT_MS` | `60000` | Timeout per Open Food Facts request. A timed-out request counts as a failed attempt and is retried |
 | `LLM_ENABLED` | `false` | Enable LLM fallback for custom units and unmatched foods |
 | `LLM_API_KEY` | — | API key for OpenAI-compatible endpoint |
 | `LLM_BASE_URL` | `https://api.mistral.ai/v1` | LLM API base URL |
@@ -121,7 +121,7 @@ It's recommended to install it next to your Mealie instance using docker-compose
 | `LLM_TEMPERATURE` | `0.1` | LLM sampling temperature |
 | `LLM_MAX_TOKENS_GRAMS` | `10` | Max tokens for gram estimation responses |
 | `LLM_MAX_TOKENS_NUTRIENTS` | `200` | Max tokens for nutrient estimation responses |
-| `LLM_TIMEOUT_MS` | `120000` | Timeout per LLM request. A timed-out request counts as no estimate for that ingredient |
+| `LLM_TIMEOUT_MS` | `300000` | Timeout per LLM request (5 minutes, enough for a cold start of a local model). A timed-out request counts as no estimate for that ingredient |
 | `ESTIMATE_STRATEGY` | `all` | Estimation strategy: `all` (estimate every recipe) or `tagged` (only estimate recipes with the `ESTIMATE_TAG` tag) |
 | `ESTIMATE_TAG` | `estimate` | Tag name to check when `ESTIMATE_STRATEGY=tagged` |
 | `EVENT_DEBOUNCE_MS` | `2000` | Quiet period before a recipe event is processed. Bursts of rapid saves for the same recipe are coalesced into one run and all writes for a recipe are serialized, so concurrent patches cannot duplicate ingredients |
@@ -290,12 +290,18 @@ This fork adds recursive nutrition estimation for Mealie ingredients that refere
 
 ### Behavior
 
-- Referenced recipes are estimated recursively.
+- Referenced recipes are estimated recursively from their own ingredients. Nutrition stored on the referenced recipe (including manual values) is ignored.
 - The referenced recipe's own servings/yield are used to calculate nutrition per portion.
-- The quantity on the parent recipe determines how many referenced-recipe portions are included.
+- The quantity on the parent recipe is the number of referenced-recipe portions that are included. The unit is ignored.
 - Nested referenced recipes are supported.
 - Circular references are detected and ignored safely.
-- Referenced recipe slugs are included in the ingredient hash so changes to a reference trigger re-estimation.
+- The ingredient hash includes the ingredients and servings of referenced recipes (recursively), so processing the parent after a change in a referenced recipe re-estimates it. The parent is not re-estimated automatically when only the referenced recipe is saved.
+
+### Nutrition calculation details
+
+- The recipe notes get a "Nutrition calculation details" entry listing the matched product, amount and calories per ingredient. It is replaced on every estimation, other notes stay untouched.
+- Open Food Facts results are ranked: exact name matches and products with calories are preferred, processed forms (e.g. powder, sauce) are penalized.
+- For piece units (e.g. "Stück") the search prefers fresh products by adding "frisch" to the query.
 
 ### Fork documentation
 
